@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**About:Face** is an art project (early development): an automated camera photographs people and displays them alongside similar-looking people. This repo currently contains the C++ image-analysis half — a set of "annotator" command-line tools built on OpenCV.
+**About:Face** is an art project (early development): a booth photographs consenting visitors and displays them alongside similar-looking people. This repo currently contains the C++ image-analysis half — a set of "annotator" command-line tools built on OpenCV.
+
+> **Direction (2026-08-17).** The C++ annotators described below are a 2015 prototype and have been **retired by decision, not yet by deletion** — they still build and still work, but nothing new should be added to them. The piece is being rebuilt in Rust around learned face embeddings, with a wgpu renderer and no openFrameworks. Read [`CONTEXT.md`](CONTEXT.md) for vocabulary, [`docs/adr/`](docs/adr/) for the decisions, and [`docs/implementation-plan.md`](docs/implementation-plan.md) for the staged plan **before** doing design work here. The architecture notes below remain accurate as a description of the existing code.
 
 ## Build
 
