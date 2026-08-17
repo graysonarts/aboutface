@@ -9,6 +9,16 @@ rust-version.workspace = true
 
 [dependencies]
 afcore.workspace = true
+# Encoding the crops and the original frame as PNG. Lossless everywhere: the
+# original is what a re-embed reads back (ADR-0006).
+image.workspace = true
+# SQLite. `bundled` compiles the amalgamation in, so the Corpus does not depend
+# on whatever sqlite an installation machine happens to ship (ADR-0011).
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

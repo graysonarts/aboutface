@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state: Stage 1 in progress
 
-A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk. **Nothing stores, lays out, or renders yet**, and `afbooth` still prints its configuration and exits.
+A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk; `afstore` holds a migrated Corpus that ingests a Face and reads it back. **Nothing lays out or renders yet**, and `afbooth` still prints its configuration and exits.
 
 ```sh
 cargo test --workspace
@@ -58,7 +58,7 @@ Everything below is settled in the ADRs; this is a summary, not the source of tr
 
 ## Next actionable work
 
-Stage 1 in the implementation plan: `afstore`'s schema and write path — Face, Embedding (with its model identifier), crops, original frame — then a fixed grid on screen in `afrender` and the wiring in `afbooth`. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
+Stage 1 in the implementation plan: a fixed grid of stored Faces on screen in `afrender`, then the `afcapture -> afvision -> afstore -> afrender` wiring in `afbooth`. `afstore`'s schema and write path is done — `Corpus::ingest` takes an Embedding, the two crops and the original frame; `embeddings_for_model` is what the layout stage will read. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
 
 ## `samples/`
 

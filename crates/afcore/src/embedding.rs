@@ -30,7 +30,10 @@ impl fmt::Display for ModelId {
 }
 
 /// Ways an [`Embedding`] can be invalid or incomparable.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+///
+/// Not `Eq`: [`EmbeddingError::NotUnitLength`] reports the magnitude it
+/// measured, and that is a float.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EmbeddingError {
     /// An embedding must have at least one dimension.
     #[error("embedding is empty")]
@@ -46,6 +49,13 @@ pub enum EmbeddingError {
     /// A zero-magnitude vector cannot be normalized and carries no direction.
     #[error("embedding has zero magnitude and cannot be normalized")]
     ZeroMagnitude,
+
+    /// Values offered as already-normalized are not unit length.
+    #[error("embedding magnitude is {magnitude}, expected unit length")]
+    NotUnitLength {
+        /// The magnitude measured.
+        magnitude: f32,
+    },
 
     /// Embeddings from different models describe different spaces.
     #[error("cannot compare embeddings from different models: {left} vs {right}")]
@@ -98,6 +108,40 @@ impl Embedding {
         }
 
         let values = values.into_iter().map(|v| v / magnitude).collect();
+        Ok(Self { model, values })
+    }
+
+    /// Rebuilds an Embedding from values that are already unit length.
+    ///
+    /// [`Embedding::new`] divides by the magnitude it measures, and dividing an
+    /// already-normalized vector by a magnitude that is only *approximately*
+    /// 1.0 in `f32` moves every value. That is fine for inference output and
+    /// wrong for the Corpus: a Face read back must be the Face that was
+    /// written, bit for bit, or the archive drifts a little every time it is
+    /// re-read.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `values` is empty, contains a non-finite value, or
+    /// has a magnitude further than `tolerance` from 1.0 — which means the
+    /// stored values are not an Embedding, not that they need rescaling.
+    pub fn from_unit(
+        model: ModelId,
+        values: Vec<f32>,
+        tolerance: f32,
+    ) -> Result<Self, EmbeddingError> {
+        if values.is_empty() {
+            return Err(EmbeddingError::Empty);
+        }
+        if let Some(index) = values.iter().position(|v| !v.is_finite()) {
+            return Err(EmbeddingError::NotFinite { index });
+        }
+
+        let magnitude = values.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if !magnitude.is_finite() || (magnitude - 1.0).abs() > tolerance {
+            return Err(EmbeddingError::NotUnitLength { magnitude });
+        }
+
         Ok(Self { model, values })
     }
 
@@ -205,6 +249,24 @@ mod tests {
             Embedding::new(model(), vec![0.0, 0.0]),
             Err(EmbeddingError::ZeroMagnitude)
         );
+    }
+
+    #[test]
+    fn keeps_the_values_untouched_when_they_are_already_unit_length() {
+        let normalized = embed(vec![0.3, -0.7, 0.2, 1.1]);
+
+        let rebuilt = Embedding::from_unit(model(), normalized.as_slice().to_vec(), 1e-5)
+            .expect("already unit length");
+
+        assert_eq!(rebuilt, normalized);
+    }
+
+    #[test]
+    fn refuses_values_offered_as_normalized_when_they_are_not() {
+        assert!(matches!(
+            Embedding::from_unit(model(), vec![3.0, 4.0], 1e-5),
+            Err(EmbeddingError::NotUnitLength { .. })
+        ));
     }
 
     #[test]
