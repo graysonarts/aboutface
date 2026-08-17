@@ -16,6 +16,24 @@ use crate::frame::Frame;
 /// hanging forever.
 const PERMISSION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How many frames to pull and throw away before the first Capture.
+///
+/// AVFoundation returns an open stream before the sensor has anything on it:
+/// measured on a FaceTime HD camera, the first two frames were byte-identical
+/// pure black and the scene only appeared on the third. A Visitor presses the
+/// Shutter once, so that first frame is the one that matters, and a black
+/// photograph of someone who agreed to be photographed is worse than a failure.
+///
+/// Measured on that camera in a dark room, which is the slow case because
+/// auto-exposure converges on a clock rather than a frame counter: 15 frames
+/// still under-exposed, 45 reached the same result as 90, and 90 cost an extra
+/// 1.3s for nothing. 45 frames is roughly 1.3s at 33fps, paid once when the
+/// booth opens the camera, not per Capture.
+///
+/// A brighter room settles sooner, so this is an upper bound rather than a
+/// requirement. Override it with [`NokhwaCamera::with_warmup_frames`].
+const WARMUP_FRAMES: u32 = 45;
+
 /// A camera driven by [`nokhwa`].
 ///
 /// `nokhwa` is the initial cross-platform implementation and is deliberately
@@ -27,6 +45,7 @@ pub struct NokhwaCamera {
     selector: CameraSelector,
     device: Option<NokhwaDevice>,
     name: String,
+    warmup_frames: u32,
 }
 
 // `nokhwa::Camera` is not `Debug`, and it is not this crate's job to make the
@@ -52,7 +71,17 @@ impl NokhwaCamera {
             selector,
             device: None,
             name,
+            warmup_frames: WARMUP_FRAMES,
         }
+    }
+
+    /// Overrides how many frames [`Camera::open`] discards before returning.
+    ///
+    /// Worth raising on a sensor that settles slowly, and worth setting to zero
+    /// only when something else guarantees the stream is already live.
+    pub fn with_warmup_frames(mut self, frames: u32) -> Self {
+        self.warmup_frames = frames;
+        self
     }
 
     /// Asks the operating system for camera access, blocking until it answers.
@@ -132,6 +161,11 @@ impl Camera for NokhwaCamera {
             .open_stream()
             .map_err(|error| classify(&error, "open", &self.selector, &self.name))?;
 
+        // The stream is open but the sensor is not ready; see `WARMUP_FRAMES`.
+        // Errors here are swallowed on purpose — a warm-up is not the place to
+        // diagnose a device, and the Visitor's actual grab reports properly.
+        settle(self.warmup_frames, || device.frame().map(|_| ()));
+
         self.device = Some(device);
         Ok(())
     }
@@ -187,6 +221,20 @@ impl Camera for NokhwaCamera {
             },
         }
     }
+}
+
+/// Pulls and discards `rounds` frames, returning how many were discarded.
+///
+/// Stops at the first failure rather than retrying: warm-up is best effort, and
+/// a device that has genuinely gone away should be reported by the grab the
+/// Visitor asked for, not by a frame nobody wanted.
+fn settle<E>(rounds: u32, mut grab: impl FnMut() -> Result<(), E>) -> u32 {
+    for discarded in 0..rounds {
+        if grab().is_err() {
+            return discarded;
+        }
+    }
+    rounds
 }
 
 /// Sorts a [`NokhwaError`] into the failures an operator can act on.
@@ -290,6 +338,62 @@ mod tests {
         let error = classified(NokhwaError::GeneralError("something new".to_owned()));
 
         assert!(matches!(error, CameraError::Backend { .. }), "{error}");
+    }
+
+    #[test]
+    fn should_discard_the_requested_frames_when_every_grab_succeeds() {
+        let mut grabbed = 0;
+
+        let discarded = settle(5, || {
+            grabbed += 1;
+            Ok::<(), ()>(())
+        });
+
+        assert_eq!(discarded, 5);
+        assert_eq!(grabbed, 5);
+    }
+
+    #[test]
+    fn should_stop_discarding_when_a_grab_fails() {
+        let mut grabbed = 0;
+
+        let discarded = settle(10, || {
+            grabbed += 1;
+            if grabbed < 3 { Ok(()) } else { Err(()) }
+        });
+
+        assert_eq!(discarded, 2, "the failing grab is not a discarded frame");
+        assert_eq!(grabbed, 3, "warm-up stops rather than retrying");
+    }
+
+    #[test]
+    fn should_grab_nothing_when_no_warm_up_is_configured() {
+        let mut grabbed = 0;
+
+        let discarded = settle(0, || {
+            grabbed += 1;
+            Ok::<(), ()>(())
+        });
+
+        assert_eq!(discarded, 0);
+        assert_eq!(grabbed, 0);
+    }
+
+    #[test]
+    fn should_warm_up_by_default_so_the_first_capture_is_not_black() {
+        let camera = NokhwaCamera::new(CameraSelector::Default);
+
+        assert!(
+            camera.warmup_frames > 0,
+            "a default with no warm-up reintroduces the black first frame"
+        );
+    }
+
+    #[test]
+    fn should_take_the_configured_warm_up_when_one_is_given() {
+        let camera = NokhwaCamera::new(CameraSelector::Default).with_warmup_frames(0);
+
+        assert_eq!(camera.warmup_frames, 0);
     }
 
     #[test]
