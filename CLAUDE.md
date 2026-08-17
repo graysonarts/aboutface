@@ -42,6 +42,22 @@ Every annotator takes `-v`/`--view` to render the result in an OpenCV window ins
 
 **Model and cascade data live in two places:** `data/` holds the Haar cascades `face_isolator` loads by filename (`haarcascade_frontalface_alt2.xml`, `haarcascade_profileface.xml` — names are constants in `face_isolator.h`, resolved against `--datadir`, default `./data`). ASM models for `feature_extractor` live in `contrib/asmlib-opencv/data/` and are passed as an explicit path argument.
 
+## Agent skills
+
+The `mattpocock-skills` plugin is enabled for this repo via `.claude/settings.json`.
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`graysonarts/aboutface`), driven by the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each using its own name as the label string. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root (neither created yet). See `docs/agents/domain.md`.
+
 ## contrib/
 
 `contrib/tclap`, `contrib/FindTBB`, and `contrib/asmlib-opencv` are vendored third-party sources, not submodules. Only `asmlib-opencv` is built (as the static `asm` target consumed by `feature_extractor`), and its `src/CMakeLists.txt` has been **patched** for this build — `src/CMakeLists.txt.orig` is the upstream copy kept for diffing. The patch drops the Qt annotator, demo, and Doxygen targets, removes the nested `project()`/`cmake_minimum_required()`, and adds the TBB dependency. Preserve those edits when touching that file. Treat the rest of `contrib/` as read-only.
