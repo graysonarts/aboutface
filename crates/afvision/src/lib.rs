@@ -18,5 +18,13 @@
 //! This crate owns the [`afcore::ModelId`] and selects the ONNX Runtime
 //! execution provider at startup. The CPU path must remain viable; inference
 //! runs once per Visitor, not per frame, so its latency budget is generous.
+//!
+//! The ONNX files are fetched, not committed — see `docs/models.md`. Where they
+//! live and which identifier each carries come from `afbooth`'s configuration,
+//! because which DINOv2 ViT size the piece runs is still open (ADR-0006).
 
-#![allow(dead_code, unused_imports)] // Stage 0 scaffold.
+mod model;
+mod provider;
+
+pub use model::{ModelError, ModelRole, ModelSpec};
+pub use provider::{ExecutionProviderKind, runtime_info, select_execution_provider};
