@@ -11,11 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Cargo workspace of seven crates, CI, and the domain types in `afcore`. **No pipeline yet** — nothing captures, embeds, stores, lays out, or renders. `afbooth` prints its configuration and exits. Stage 1 in the implementation plan is the first end-to-end slice.
 
 ```sh
-cargo test --workspace                                # 16 tests, all in afcore
+cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
-cargo run -p afbooth
+./scripts/fetch-models.sh                             # ONNX files; not committed
+cargo run -p afbooth                                  # startup self-check
 ```
+
+`cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId` plus the ONNX Runtime execution provider selected. Missing model files exit non-zero with the fetch command. Where the weights come from: [`docs/models.md`](docs/models.md).
 
 The original C++/OpenCV "annotator" tools (a 2015 prototype of face *detection*) were deleted on 2026-08-17 per [ADR-0001](docs/adr/0001-retire-opencv-annotators-for-learned-embeddings.md). They remain in git history — `git log -- annotators/` — and are not a reference implementation. Do not resurrect them.
 
@@ -38,6 +41,7 @@ Two invariants are already encoded in `afcore` and should stay that way: Embeddi
 - **[`CONTEXT.md`](CONTEXT.md)** — the project's vocabulary. Use these terms exactly; the glossary also lists terms deliberately avoided.
 - **[`docs/adr/`](docs/adr/)** — the decisions and their reasoning. These win over any other document in a conflict.
 - **[`docs/implementation-plan.md`](docs/implementation-plan.md)** — the staged plan and the intended crate layout.
+- **[`docs/models.md`](docs/models.md)** — where the ONNX weights come from, their licences, and how `booth.toml` points at them.
 
 ## Direction in brief
 
