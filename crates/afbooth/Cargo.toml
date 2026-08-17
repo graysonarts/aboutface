@@ -14,6 +14,9 @@ aflayout = { path = "../aflayout" }
 afrender = { path = "../afrender" }
 afstore = { path = "../afstore" }
 afvision = { path = "../afvision" }
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true

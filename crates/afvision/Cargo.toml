@@ -9,6 +9,22 @@ rust-version.workspace = true
 
 [dependencies]
 afcore.workspace = true
+thiserror.workspace = true
+# ONNX Runtime. `download-binaries` keeps the CPU path working on a machine with
+# no vendor SDK installed, which ADR-0006 requires.
+ort = { version = "2.0.0-rc.13", default-features = false, features = [
+    "std",
+    "download-binaries",
+    "copy-dylibs",
+    "tls-native",
+    "api-27",
+] }
+
+# CoreML is the only accelerator compiled in so far, because Apple silicon is the
+# only candidate machine on hand (ADR-0006). CUDA/TensorRT join the probe list in
+# `provider.rs` when there is a Linux GPU box to test them on.
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }
 
 [lints]
 workspace = true
