@@ -9,5 +9,18 @@
 //! the workspace imports a camera API** — this is the one place a platform
 //! choice is allowed to leak, and containing it here is the whole point of the
 //! crate.
+//!
+//! # Shape
+//!
+//! - [`Camera`] — open, grab one frame, close, describe. The seam.
+//! - [`Frame`] — a plain RGB8 buffer, the only thing that crosses the seam.
+//! - [`testing::FakeCamera`] — replays photographs from disk, so every later
+//!   stage is testable on a machine with no webcam.
 
-#![allow(dead_code, unused_imports)] // Stage 0 scaffold.
+mod camera;
+mod frame;
+
+pub mod testing;
+
+pub use camera::{Camera, CameraDescription, CameraError, CameraSelector};
+pub use frame::{Frame, FrameError};
