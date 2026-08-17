@@ -1,0 +1,21 @@
+# About:Face booth configuration.
+#
+# `cargo run -p afbooth` reads this file from the working directory; set
+# AFBOOTH_CONFIG to point somewhere else. Fetch the ONNX files it names with
+# `scripts/fetch-models.sh` — they are not committed (see docs/models.md).
+
+[models]
+# Relative paths resolve against this file's directory. Git-ignored.
+dir = "models"
+
+# YuNet (MIT) — detection plus the five landmarks alignment needs (ADR-0007).
+[models.detector]
+file = "face_detection_yunet_2023mar.onnx"
+
+# DINOv2 (Apache 2.0) — apparent resemblance, not identity resemblance
+# (ADR-0007). Which ViT size follows the hardware decision, which is still open
+# (ADR-0006): change `file` to dinov2-base.onnx or dinov2-large.onnx and re-fetch.
+# The model id is derived from the file name, so the Corpus can tell the sizes
+# apart; set `id` here only to override that.
+[models.embedder]
+file = "dinov2-small.onnx"
