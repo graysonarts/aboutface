@@ -1,0 +1,19 @@
+[package]
+name = "afbooth"
+description = "The About:Face installation binary."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+afcore.workspace = true
+afcapture = { path = "../afcapture" }
+aflayout = { path = "../aflayout" }
+afrender = { path = "../afrender" }
+afstore = { path = "../afstore" }
+afvision = { path = "../afvision" }
+
+[lints]
+workspace = true

@@ -67,8 +67,11 @@ with a finished layer.
 - Model choice: **resolved** in ADR-0007. YuNet (MIT) for detect/align, DINOv2
   (Apache 2.0) for the Embedding. Face-recognition weights are dropped entirely.
   No longer blocking.
-- Stand up the Cargo workspace with the seven empty crates and CI that builds
-  them.
+- Stand up the Cargo workspace with the seven crates and CI that builds them.
+  *(done — edition 2024, `-D warnings` on rustc and rustdoc, fmt/clippy/test/doc
+  in CI. `afcore` carries the domain types with 16 tests; the other six crates
+  are documented stubs. The stale CodeSee workflow was removed: it analyzed the
+  deleted C++ and ran `pull_request_target` with a repository secret.)*
 
 #### Why not a face-recognition model (short version)
 

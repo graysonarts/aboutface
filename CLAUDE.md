@@ -6,11 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **About:Face** is an art project (early development): a booth photographs consenting visitors and displays them alongside similar-looking people, on a wall that rearranges itself so people who look alike sit near each other.
 
-## Current state: no implementation
+## Current state: Stage 0 complete
 
-The repository holds **documentation and sample images only**. There is no build, no code, and no test suite.
+A Cargo workspace of seven crates, CI, and the domain types in `afcore`. **No pipeline yet** — nothing captures, embeds, stores, lays out, or renders. `afbooth` prints its configuration and exits. Stage 1 in the implementation plan is the first end-to-end slice.
+
+```sh
+cargo test --workspace                                # 16 tests, all in afcore
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all
+cargo run -p afbooth
+```
 
 The original C++/OpenCV "annotator" tools (a 2015 prototype of face *detection*) were deleted on 2026-08-17 per [ADR-0001](docs/adr/0001-retire-opencv-annotators-for-learned-embeddings.md). They remain in git history — `git log -- annotators/` — and are not a reference implementation. Do not resurrect them.
+
+## Crates
+
+| Crate | Owns |
+| --- | --- |
+| `afcore` | Domain types. No I/O, no GPU, no inference. Everything depends on it; it depends on `thiserror`. |
+| `afvision` | Detect, align, embed. Owns the `ModelId` and the execution-provider choice. |
+| `afstore` | The Corpus: Faces, Embeddings, Consent Records, deletion. |
+| `aflayout` | SOM ordering, LAPJV placement, lattice resampling on resize. |
+| `afcapture` | `Camera` trait and Shutter. **The only crate allowed to import a camera API.** |
+| `afrender` | wgpu + winit. Re-solve and Drift are visually distinct motions. |
+| `afbooth` | The binary: wiring, config, startup self-check. |
+
+Two invariants are already encoded in `afcore` and should stay that way: Embeddings from different models or widths **refuse** to compare rather than returning a degraded number, and an `Assignment` refuses to place one Face in two Cells.
 
 ## Read before doing design work
 

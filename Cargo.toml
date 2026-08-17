@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/graysonarts/aboutface"
+# Edition 2024 needs 1.85, but afcore uses let-chains, stabilized in 1.88.
+rust-version = "1.88"
+
+[workspace.dependencies]
+afcore = { path = "crates/afcore" }
+thiserror = "2"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
