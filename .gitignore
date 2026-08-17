@@ -1,8 +1,13 @@
-build
-build-*
-.svn
-make
+/target
 dist
 tmp
-asmlib-build
-asmlib-stamp
+
+# Corpus data must never be committed — it is photographs of people.
+/corpus
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# Model weights are fetched, not vendored.
+/models
+*.onnx
