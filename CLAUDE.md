@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state: Stage 1 in progress
 
-A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk; `afstore` holds a migrated Corpus that ingests a Face and reads it back. **Nothing lays out or renders yet**, and `afbooth` still prints its configuration and exits.
+A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk; `afstore` holds a migrated Corpus that ingests a Face, reads it back, and hands the wall a Window of Faces; `afrender` draws that Window as a Grid of Cells. **Nothing orders or animates yet** — Faces fill Cells in arbitrary order — and `afbooth` still prints its configuration and exits.
 
 ```sh
 cargo test --workspace
@@ -18,6 +18,8 @@ cargo fmt --all
 cargo run -p afbooth                                  # startup self-check
 cargo run -p afvision --example detect_face -- samples/1.jpg   # detect + both crops
 cargo run -p afvision --example embed_faces -- samples/1.jpg samples/3.jpg  # detect -> align -> embed
+cargo run -p afrender --example demo_corpus -- /tmp/corpus samples/*.jpg    # fixture Corpus, no camera
+cargo run -p afrender --example wall -- /tmp/corpus                         # the wall
 ```
 
 `cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId` plus the ONNX Runtime execution provider selected. Missing model files exit non-zero with the fetch command. Where the weights come from: [`docs/models.md`](docs/models.md).
@@ -58,7 +60,7 @@ Everything below is settled in the ADRs; this is a summary, not the source of tr
 
 ## Next actionable work
 
-Stage 1 in the implementation plan: a fixed grid of stored Faces on screen in `afrender`, then the `afcapture -> afvision -> afstore -> afrender` wiring in `afbooth`. `afstore`'s schema and write path is done — `Corpus::ingest` takes an Embedding, the two crops and the original frame; `embeddings_for_model` is what the layout stage will read. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
+Stage 1 in the implementation plan: the `afcapture -> afvision -> afstore -> afrender` wiring in `afbooth`. `afstore`'s schema and write path is done — `Corpus::ingest` takes an Embedding, the two crops and the original frame; `Corpus::window` is what the wall reads and `embeddings_for_model` is what the layout stage will read. `afrender::show` puts a `GridSpec`-sized Grid on screen from a list of `Portrait`s; ordering, Assignment and motion are Stage 2. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
 
 ## `samples/`
 

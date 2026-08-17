@@ -185,6 +185,37 @@ impl Corpus {
         Ok(embeddings)
     }
 
+    /// The Faces of one Window onto the Corpus, in the order they were
+    /// ingested.
+    ///
+    /// The Grid is a Window onto a Corpus that grows without bound (ADR-0004),
+    /// so the wall asks for as many Faces as it has Cells and no more. `offset`
+    /// is where that Window sits in the archive; Drift will move it (Stage 3),
+    /// and Stage 1 leaves it at zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be read, or if a stored
+    /// Embedding disagrees with its recorded width or model.
+    pub fn window(&self, offset: u64, limit: u32) -> Result<Vec<StoredFace>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, captured_at, model_id, dim, values_le
+             FROM face ORDER BY id LIMIT ?1 OFFSET ?2",
+        )?;
+        // SQLite counts rows in `i64`. An offset past that is past the end of
+        // any Corpus that will ever exist, and reads as empty rather than
+        // wrapping round to the start of the archive.
+        let offset = i64::try_from(offset).unwrap_or(i64::MAX);
+        let mut rows = statement.query(rusqlite::params![limit, offset])?;
+
+        let mut faces = Vec::new();
+        while let Some(row) = rows.next()? {
+            faces.push(self.stored_face(row)?);
+        }
+
+        Ok(faces)
+    }
+
     /// How many Faces the Corpus holds.
     ///
     /// # Errors

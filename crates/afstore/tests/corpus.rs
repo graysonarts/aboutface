@@ -181,6 +181,71 @@ fn should_return_only_that_model_when_embeddings_are_loaded_for_layout() {
 }
 
 #[test]
+fn should_return_faces_in_capture_order_when_a_window_is_read() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut corpus = Corpus::open(root.path()).expect("the corpus opens");
+    let first = corpus.ingest(new_face(1.0)).expect("the face is ingested");
+    let second = corpus.ingest(new_face(2.0)).expect("the face is ingested");
+
+    let window = corpus.window(0, 10).expect("the window reads");
+
+    assert_eq!(
+        window.iter().map(|face| face.id()).collect::<Vec<_>>(),
+        vec![first, second]
+    );
+    assert!(
+        window[0].display_path().is_file(),
+        "the wall needs the display crop the window points at"
+    );
+}
+
+#[test]
+fn should_return_only_as_many_faces_as_the_grid_has_cells_when_a_window_is_read() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut corpus = Corpus::open(root.path()).expect("the corpus opens");
+    for seed in 0..5 {
+        corpus
+            .ingest(new_face(seed as f32))
+            .expect("the face is ingested");
+    }
+
+    let window = corpus.window(0, 2).expect("the window reads");
+
+    assert_eq!(window.len(), 2);
+}
+
+#[test]
+fn should_move_across_the_corpus_when_a_window_is_read_at_an_offset() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut corpus = Corpus::open(root.path()).expect("the corpus opens");
+    let ids: Vec<_> = (0..4)
+        .map(|seed| {
+            corpus
+                .ingest(new_face(seed as f32))
+                .expect("the face is ingested")
+        })
+        .collect();
+
+    let window = corpus.window(2, 2).expect("the window reads");
+
+    assert_eq!(
+        window.iter().map(|face| face.id()).collect::<Vec<_>>(),
+        ids[2..].to_vec()
+    );
+}
+
+#[test]
+fn should_return_nothing_when_a_window_is_read_past_the_end_of_the_corpus() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut corpus = Corpus::open(root.path()).expect("the corpus opens");
+    corpus.ingest(new_face(1.0)).expect("the face is ingested");
+
+    let window = corpus.window(10, 10).expect("the window reads");
+
+    assert!(window.is_empty());
+}
+
+#[test]
 fn should_leave_no_face_behind_when_ingest_fails_part_way() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let mut corpus = Corpus::open(root.path()).expect("the corpus opens");

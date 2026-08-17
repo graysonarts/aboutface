@@ -9,6 +9,22 @@ rust-version.workspace = true
 
 [dependencies]
 afcore.workspace = true
+# Casting the per-Cell instance data to bytes for the vertex buffer.
+bytemuck = "1.25.2"
+# Decoding display crops. The wall reads them as files; it never re-encodes one.
+image.workspace = true
+# `request_adapter` and `request_device` are futures, and the piece has no async
+# runtime: one blocking wait at startup is cheaper than adopting Tokio for it.
+pollster = "1.0.1"
+thiserror.workspace = true
+# The renderer and the window, per ADR-0002. No openFrameworks.
+wgpu = "30.0.0"
+winit = "0.30.13"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The examples read a Corpus; the library never does — `afbooth` owns that
+# wiring, and this crate takes the paths it is handed.
+afstore = { path = "../afstore" }
