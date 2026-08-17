@@ -4,47 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**About:Face** is an art project (early development): an automated camera photographs people and displays them alongside similar-looking people. This repo currently contains the C++ image-analysis half — a set of "annotator" command-line tools built on OpenCV.
+**About:Face** is an art project (early development): a booth photographs consenting visitors and displays them alongside similar-looking people, on a wall that rearranges itself so people who look alike sit near each other.
 
-## Build
+## Current state: no implementation
 
-Dependencies must be installed on the system: **OpenCV** (2.x-era C API constants like `CV_BGR2GRAY`, `CV_RGB`, `CV_BGR2HSV_FULL` are used, so OpenCV 4 will not compile without changes), **TBB**, and **TCLAP** (`CMake/FindTCLAP.cmake` falls back to the vendored `contrib/tclap/include`).
+The repository holds **documentation and sample images only**. There is no build, no code, and no test suite.
 
-```sh
-mkdir build && cd build && cmake .. && make      # binaries land in build/bin/
-./update.sh                                      # alternative: generates build-Xcode/ and build-Ninja/
-make install                                     # installs into ./dist/about:face-<version>/ (source tree, not a system prefix)
-```
+The original C++/OpenCV "annotator" tools (a 2015 prototype of face *detection*) were deleted on 2026-08-17 per [ADR-0001](docs/adr/0001-retire-opencv-annotators-for-learned-embeddings.md). They remain in git history — `git log -- annotators/` — and are not a reference implementation. Do not resurrect them.
 
-There is no test suite and no build CI (the only workflow is a CodeSee architecture diagram).
+## Read before doing design work
 
-## Running the annotators
+- **[`CONTEXT.md`](CONTEXT.md)** — the project's vocabulary. Use these terms exactly; the glossary also lists terms deliberately avoided.
+- **[`docs/adr/`](docs/adr/)** — the decisions and their reasoning. These win over any other document in a conflict.
+- **[`docs/implementation-plan.md`](docs/implementation-plan.md)** — the staged plan and the intended crate layout.
 
-Binaries go to `<build-dir>/bin/`. The `main.cpp` of each annotator carries comment lines with working sample invocations and pre-computed bounding boxes for `samples/*.jpg` — run from `<build-dir>/bin/` so the `../../..`-relative paths in those comments resolve.
+## Direction in brief
 
-```sh
-face_isolator -d ../../../data ../../../samples/1.jpg          # -> "Face: 84,120+346x346"
-skin_color_picker ../../../samples/1.jpg 84,120+346x346        # -> "Skin: <avg hue>"
-feature_extractor ../../../contrib/asmlib-opencv/data/color_asm75.model ../../../samples/1.jpg 84,120+346x346
-```
+Everything below is settled in the ADRs; this is a summary, not the source of truth.
 
-Every annotator takes `-v`/`--view` to render the result in an OpenCV window instead of printing it, and gets `--version` for free from TCLAP.
+- **All Rust**, one process, a Cargo workspace of seven crates. No openFrameworks — there never was any in this project, and the renderer is `wgpu` + `winit` (ADR-0002).
+- **Similarity is a learned embedding** of an aligned crop, cosine distance, behind a YuNet (MIT) detector that emits the five landmarks needed for alignment (ADR-0001). The model is **DINOv2 (Apache 2.0)**, and the piece is committed to *apparent* resemblance rather than identity resemblance. Face-recognition weights are dropped — every mainstream set is research-only and the piece is expected to be commercial (ADR-0007). Embedding width is not fixed; it follows the ViT size.
+- **Layout is two stages**: a self-organizing map supplies ordering, and an LAPJV linear assignment places one Face per Cell with a movement penalty so re-solves animate coherently (ADR-0003).
+- **The Grid is a Window** onto a much larger persistent Corpus, sized on the piece's own clock and drifting slowly across the archive (ADR-0004).
+- **Capture is opt-in** and the Corpus persists, so Consent Records, Receipt Codes, and a tested deletion path are components with tickets (ADR-0005).
+- **Hardware is deferred**, so camera access sits behind a trait and the CPU inference path must stay viable. The model identifier is part of the store schema because changing models invalidates every Embedding (ADR-0006).
 
-## Architecture
+## Next actionable work
 
-**Annotators are independent processes composed via stdout, not a linked pipeline.** Each tool in `annotators/` is a separate executable that reads an image (plus, for downstream stages, a face bounding box) and prints one labeled line. The intended flow is `face_isolator` → (bounding box) → `skin_color_picker` / `feature_extractor`. Nothing wires them together yet; the box is passed by hand or by an outer script.
+Stage 0 in the implementation plan: stand up the Cargo workspace with the seven crates and CI. The model-licensing question that previously blocked it is resolved in ADR-0007.
 
-**`af::common::Rectangle` is the inter-process wire format.** `common/` builds the `aboutface_common` shared library, whose only real content is `Rectangle` and its `toString()`/`fromString()` pair using the geometry syntax `X,Y+WxH` (parsed by the regex in `common/src/rectangle.cpp`). Changing that format breaks the CLI contract between annotators. `common/include/opencv_adapters.h` is header-only and holds the `af::adapters::makeRectangle` / `makeCvRect` conversions — it exists so `Rectangle` stays free of OpenCV types and public annotator headers can forward-declare it.
+## `samples/`
 
-**Each annotator follows the same shape:** a thin `main.cpp` doing TCLAP argument parsing and printing, and one pimpl class (`FaceIsolator`, `SkinHueAverager`, `PointExtractor`) whose public header keeps OpenCV out of the interface where possible and whose `Impl` in the `.cpp` does all the OpenCV work. Each Impl exposes parallel `extract`/`average`/`find_*` and `display`/`show_*` methods over a shared private helper.
-
-**Versioning is generated at configure time.** `CMake/Version.cmake` embeds the git short SHA into `project_VERSION`, writes `${CMAKE_BINARY_DIR}/bin/version.h` from `version.h.in`, and that `PROJECT_VERSION` macro is what each `main.cpp` passes to `TCLAP::CmdLine`. It also names the install directory `dist/about:face-<version>/`.
-
-**Model and cascade data live in two places:** `data/` holds the Haar cascades `face_isolator` loads by filename (`haarcascade_frontalface_alt2.xml`, `haarcascade_profileface.xml` — names are constants in `face_isolator.h`, resolved against `--datadir`, default `./data`). ASM models for `feature_extractor` live in `contrib/asmlib-opencv/data/` and are passed as an explicit path argument.
+Four face photographs kept as test fixtures for the new pipeline. They were sample inputs for the deleted C++ tools; the CMake install rules that referenced them are gone.
 
 ## Agent skills
 
-The `mattpocock-skills` plugin is enabled for this repo via `.claude/settings.json`.
+The `mattpocock-skills` plugin is enabled for this repo via `.claude/settings.json`. Note that upstream renamed `/grill-me` to `/grill-with-docs`.
 
 ### Issue tracker
 
@@ -56,8 +51,4 @@ The five canonical triage roles, each using its own name as the label string. Se
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root (neither created yet). See `docs/agents/domain.md`.
-
-## contrib/
-
-`contrib/tclap`, `contrib/FindTBB`, and `contrib/asmlib-opencv` are vendored third-party sources, not submodules. Only `asmlib-opencv` is built (as the static `asm` target consumed by `feature_extractor`), and its `src/CMakeLists.txt` has been **patched** for this build — `src/CMakeLists.txt.orig` is the upstream copy kept for diffing. The patch drops the Qt annotator, demo, and Doxygen targets, removes the nested `project()`/`cmake_minimum_required()`, and adds the TBB dependency. Preserve those edits when touching that file. Treat the rest of `contrib/` as read-only.
+Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root, both now populated. See `docs/agents/domain.md`.
