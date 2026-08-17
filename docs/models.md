@@ -41,8 +41,10 @@ that file name, so `dinov2-small.onnx` and `dinov2-large.onnx` produce different
 identifiers and the Corpus can tell their Embeddings apart. Changing size means
 re-fetching, editing `[models.embedder] file`, and re-embedding the Corpus.
 
-Only ViT-S is checksum-pinned; run the script for `base` or `large` and it prints
-the SHA-256 to record.
+All three sizes are checksum-pinned. ViT-S was verified against the downloaded
+file; base and large come from Hugging Face's git-lfs object id, by a method
+validated against ViT-S. Whoever fetches one of those first verifies it in full,
+and a mismatch aborts the fetch.
 
 ## Configuration
 

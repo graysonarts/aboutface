@@ -25,6 +25,13 @@ yunet_url="https://github.com/opencv/opencv_zoo/raw/${yunet_rev}/models/face_det
 yunet_sha256="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 
 # DINOv2 (Apache 2.0), ONNX export by onnx-community, pinned per size.
+#
+# The small checksum was taken from the downloaded file. The base and large ones
+# come from Hugging Face's `x-linked-etag` header, which is the git-lfs object
+# id and therefore the SHA-256 of the content; the method was validated by
+# checking it reproduces the small checksum exactly. Neither has been fetched in
+# full here — the first person to run one is the first to verify it end to end,
+# and a mismatch will stop them.
 case "$dinov2_size" in
   small)
     dinov2_rev="8b1f705a3a7f6f062f6bdd21986c1583d3ef105d"
@@ -32,11 +39,11 @@ case "$dinov2_size" in
     ;;
   base)
     dinov2_rev="31ef06cac16d5d301c5930d147002a058c85a5e4"
-    dinov2_sha256=""
+    dinov2_sha256="320d1012a6fc65b101fc85ca30ee7a47b2e4f6a2e8bd78fb9d7036def0e30cb0"
     ;;
   large)
     dinov2_rev="4b3550c593d51ac1a870d48d411f35eff4eaf353"
-    dinov2_sha256=""
+    dinov2_sha256="305351060a1939d944e2dbe97dd64e4937ce5a220dce254e4cd74c7e4777d6ac"
     ;;
   *)
     echo "unknown AF_DINOV2_SIZE '$dinov2_size' (expected small, base or large)" >&2
