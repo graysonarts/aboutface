@@ -11,8 +11,18 @@ repository = "https://github.com/graysonarts/aboutface"
 rust-version = "1.88"
 
 [workspace.dependencies]
+afcapture = { path = "crates/afcapture" }
 afcore = { path = "crates/afcore" }
+# Raw-mode key events, so the placeholder Shutter is a keypress and not a
+# keypress-plus-Enter. Example-only; nothing in the library depends on it.
+crossterm = "0.29"
+# Decoding replay fixtures (JPEG) and encoding captured frames (PNG). Captures
+# are written losslessly: the original frame is retained at full quality so
+# re-embedding stays possible (ADR-0006).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+nokhwa = "0.10"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 thiserror = "2"
 toml = "1"
 

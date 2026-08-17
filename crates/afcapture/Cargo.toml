@@ -7,8 +7,31 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["nokhwa-backend"]
+# The real camera. On by default so the workspace gate compiles and lints it;
+# switchable off (`--no-default-features`) on a machine that cannot build the
+# platform bindings — the trait is the seam that makes that possible (ADR-0006).
+nokhwa-backend = ["dep:nokhwa"]
+
 [dependencies]
 afcore.workspace = true
+image.workspace = true
+thiserror.workspace = true
+
+# nokhwa's `input-native` feature pulls every platform's bindings on every
+# platform, so each backend is requested per target instead.
+[target.'cfg(target_os = "macos")'.dependencies]
+nokhwa = { workspace = true, optional = true, features = ["input-avfoundation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nokhwa = { workspace = true, optional = true, features = ["input-v4l"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+nokhwa = { workspace = true, optional = true, features = ["input-msmf"] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
