@@ -9,7 +9,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use afvision::{ModelError, ModelRole, ModelSpec};
+use afvision::{DisplayCropError, DisplayCropSpec, ModelError, ModelRole, ModelSpec};
 use serde::Deserialize;
 
 /// Environment variable naming an explicit configuration file.
@@ -52,6 +52,10 @@ pub enum ConfigError {
     /// The file parsed, but a model entry is unusable.
     #[error(transparent)]
     Model(#[from] ModelError),
+
+    /// The file parsed, but the display framing describes no rectangle.
+    #[error(transparent)]
+    DisplayCrop(#[from] DisplayCropError),
 }
 
 /// One model entry in the configuration file.
@@ -81,20 +85,75 @@ fn default_models_dir() -> PathBuf {
     PathBuf::from("models")
 }
 
+/// The `[display]` table: how the wall's crop is framed around a face.
+///
+/// Whether display crops are square or portrait, and how tightly framed, is an
+/// open question in the implementation plan — it is meant to be settled by eye
+/// on the wall. The defaults here are a starting point, not an answer.
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct DisplayTable {
+    /// Fraction of the detection box added on every side.
+    #[serde(default = "default_margin")]
+    margin: f32,
+    /// Width over height: 1.0 is square, 0.8 is a 4:5 portrait.
+    #[serde(default = "default_aspect_ratio")]
+    aspect_ratio: f32,
+    /// Rendered width in pixels.
+    #[serde(default = "default_crop_width")]
+    width: u32,
+    /// Lifts the frame by this fraction of its own height.
+    #[serde(default = "default_vertical_bias")]
+    vertical_bias: f32,
+}
+
+impl Default for DisplayTable {
+    fn default() -> Self {
+        Self {
+            margin: default_margin(),
+            aspect_ratio: default_aspect_ratio(),
+            width: default_crop_width(),
+            vertical_bias: default_vertical_bias(),
+        }
+    }
+}
+
+// The house framing lives in `afvision`, with the code that applies it; an
+// omitted key here means "whatever the piece's default framing is", not a
+// number this file gets to choose independently.
+fn default_margin() -> f32 {
+    DisplayCropSpec::default().margin()
+}
+
+fn default_aspect_ratio() -> f32 {
+    DisplayCropSpec::default().aspect_ratio()
+}
+
+fn default_crop_width() -> u32 {
+    DisplayCropSpec::default().width()
+}
+
+fn default_vertical_bias() -> f32 {
+    DisplayCropSpec::default().vertical_bias()
+}
+
 /// The configuration file as written on disk.
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct ConfigFile {
     models: ModelsTable,
+    #[serde(default)]
+    display: DisplayTable,
 }
 
 /// The booth's resolved configuration.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BoothConfig {
     source: PathBuf,
     models_dir: PathBuf,
     detector: ModelSpec,
     embedder: ModelSpec,
+    display_crop: DisplayCropSpec,
 }
 
 impl BoothConfig {
@@ -155,12 +214,19 @@ impl BoothConfig {
 
         let detector = spec(ModelRole::Detector, &models_dir, &file.models.detector)?;
         let embedder = spec(ModelRole::Embedder, &models_dir, &file.models.embedder)?;
+        let display_crop = DisplayCropSpec::new(
+            file.display.margin,
+            file.display.aspect_ratio,
+            file.display.width,
+        )?
+        .with_vertical_bias(file.display.vertical_bias);
 
         Ok(Self {
             source: source.to_path_buf(),
             models_dir,
             detector,
             embedder,
+            display_crop,
         })
     }
 
@@ -172,6 +238,11 @@ impl BoothConfig {
     /// Where the fetched ONNX files are expected.
     pub fn models_dir(&self) -> &Path {
         &self.models_dir
+    }
+
+    /// How the wall's crop is framed around a detected face.
+    pub fn display_crop(&self) -> &DisplayCropSpec {
+        &self.display_crop
     }
 
     /// Every model the booth needs, in self-check order.
@@ -359,6 +430,62 @@ mod tests {
         .expect_err("blank id");
 
         assert!(matches!(error, ConfigError::Model(_)), "{error}");
+    }
+
+    #[test]
+    fn should_frame_a_portrait_display_crop_when_config_omits_the_table() {
+        let config = parse(MINIMAL).expect("valid config");
+        let crop = config.display_crop();
+
+        assert_eq!((crop.width(), crop.height()), (512, 640));
+        assert!(
+            crop.margin() > 0.0,
+            "the display crop must be looser than the detection box"
+        );
+    }
+
+    #[test]
+    fn should_use_the_configured_framing_when_the_display_table_is_present() {
+        let config = parse(
+            r#"
+            [display]
+            margin = 0.6
+            aspect_ratio = 1.0
+            width = 256
+            vertical_bias = 0.1
+
+            [models.detector]
+            file = "yunet.onnx"
+
+            [models.embedder]
+            file = "dinov2-small.onnx"
+            "#,
+        )
+        .expect("valid config");
+        let crop = config.display_crop();
+
+        assert_eq!((crop.width(), crop.height()), (256, 256));
+        assert!((crop.margin() - 0.6).abs() < f32::EPSILON);
+        assert!((crop.vertical_bias() - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn should_reject_config_when_the_display_framing_is_impossible() {
+        let error = parse(
+            r#"
+            [display]
+            aspect_ratio = 0.0
+
+            [models.detector]
+            file = "yunet.onnx"
+
+            [models.embedder]
+            file = "dinov2-small.onnx"
+            "#,
+        )
+        .expect_err("impossible framing");
+
+        assert!(matches!(error, ConfigError::DisplayCrop(_)), "{error}");
     }
 
     #[test]

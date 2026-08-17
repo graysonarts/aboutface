@@ -68,6 +68,7 @@ name = "afvision"
 version = "0.1.0"
 dependencies = [
  "afcore",
+ "image",
  "ort",
  "thiserror",
 ]

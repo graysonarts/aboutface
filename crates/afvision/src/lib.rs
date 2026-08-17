@@ -22,9 +22,33 @@
 //! The ONNX files are fetched, not committed — see `docs/models.md`. Where they
 //! live and which identifier each carries come from `afbooth`'s configuration,
 //! because which DINOv2 ViT size the piece runs is still open (ADR-0006).
+//!
+//! # Shape
+//!
+//! - [`FaceDetector`] — YuNet over `ort`; hands back [`Faces`], which
+//!   distinguishes none, one and several. There is no way to ask for "the
+//!   face".
+//! - [`align`] — the 112×112 crop the embedder sees, warped so the landmarks
+//!   land on [`aligned_template`].
+//! - [`display_crop`] — the portrait the wall shows, framed by
+//!   [`DisplayCropSpec`] because the framing is an open question.
+//!
+//! Embedding is not here yet; detection and alignment run off a file on disk:
+//!
+//! ```text
+//! cargo run -p afvision --example detect_face -- samples/1.jpg
+//! ```
 
+mod align;
+mod detect;
+mod geometry;
 mod model;
 mod provider;
 
+pub use align::{
+    ALIGNED_SIZE, DisplayCropError, DisplayCropSpec, align, aligned_template, display_crop,
+};
+pub use detect::{DetectError, Detection, FaceCountError, FaceDetector, Faces};
+pub use geometry::{BoundingBox, GeometryError, Landmarks, Point, SimilarityTransform};
 pub use model::{ModelError, ModelRole, ModelSpec};
 pub use provider::{ExecutionProviderKind, runtime_info, select_execution_provider};

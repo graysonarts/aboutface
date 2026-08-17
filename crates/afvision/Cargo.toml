@@ -9,6 +9,9 @@ rust-version.workspace = true
 
 [dependencies]
 afcore.workspace = true
+# Decoding sample photographs and encoding the two crops. Nothing here re-encodes
+# the original frame: re-embedding depends on keeping it at full quality (ADR-0006).
+image.workspace = true
 thiserror.workspace = true
 # ONNX Runtime. `download-binaries` keeps the CPU path working on a machine with
 # no vendor SDK installed, which ADR-0006 requires.

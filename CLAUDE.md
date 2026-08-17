@@ -16,6 +16,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ./scripts/fetch-models.sh                             # ONNX files; not committed
 cargo run -p afbooth                                  # startup self-check
+cargo run -p afvision --example detect_face -- samples/1.jpg   # detect + both crops
 ```
 
 `cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId` plus the ONNX Runtime execution provider selected. Missing model files exit non-zero with the fetch command. Where the weights come from: [`docs/models.md`](docs/models.md).

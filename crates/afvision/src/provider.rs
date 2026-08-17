@@ -48,6 +48,21 @@ impl ExecutionProviderKind {
             Self::Cpu => true,
         }
     }
+
+    /// The provider as a Session builder registration.
+    ///
+    /// Registration is best-effort by default: a provider that fails to
+    /// initialise leaves the Session on CPU rather than refusing to start,
+    /// which is the behaviour ADR-0006 asks for.
+    pub(crate) fn dispatch(self) -> ort::ep::ExecutionProviderDispatch {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::CoreMl => ort::ep::CoreML::default().build(),
+            #[cfg(not(target_os = "macos"))]
+            Self::CoreMl => ort::ep::CPU::default().build(),
+            Self::Cpu => ort::ep::CPU::default().build(),
+        }
+    }
 }
 
 impl fmt::Display for ExecutionProviderKind {

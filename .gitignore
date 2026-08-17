@@ -8,6 +8,9 @@ tmp
 # anchored: the example writes relative to the working directory, so this must
 # match wherever it is run from.
 captures/
+# Where the detect_face example writes its two crops. Also photographs of
+# people, and also written relative to the working directory.
+crops/
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

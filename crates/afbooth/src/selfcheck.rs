@@ -33,6 +33,14 @@ impl SelfCheck {
         println!("models dir: {}", config.models_dir().display());
         println!("execution provider: {provider}");
         println!("onnx runtime: {runtime}");
+        let crop = config.display_crop();
+        println!(
+            "display crop: {}x{} (margin {:.2}, bias {:.2})",
+            crop.width(),
+            crop.height(),
+            crop.margin(),
+            crop.vertical_bias()
+        );
         println!("models:");
 
         let mut missing = Vec::new();
