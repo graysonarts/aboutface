@@ -23,9 +23,11 @@ No hardware commitment. Instead:
   it proves inadequate. No other crate imports a camera API.
 - `afvision` selects an ONNX Runtime execution provider at startup — CoreML,
   CUDA/TensorRT, or CPU — and **the CPU path must remain viable**. Model choice is
-  therefore constrained: if a full ArcFace R100 is too slow on CPU, a smaller
-  MobileFaceNet-class model is used instead. Correct-on-CPU is the baseline;
-  accelerators are an optimization.
+  therefore constrained: DINOv2 ships in several ViT sizes (ADR-0007), and a
+  weaker machine drops to a smaller one. Correct-on-CPU is the baseline;
+  accelerators are an optimization. Note that Capture is Visitor-initiated and
+  happens once per person, so inference latency has a generous budget — this is
+  not a per-frame cost.
 - Grid size, Drift rate, and SOM resolution are configuration, not constants, so
   the piece can be scaled down for a weaker machine without code changes.
 - A startup self-check reports which providers, backend, and camera resolved, so

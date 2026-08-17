@@ -23,7 +23,7 @@ The original C++/OpenCV "annotator" tools (a 2015 prototype of face *detection*)
 Everything below is settled in the ADRs; this is a summary, not the source of truth.
 
 - **All Rust**, one process, a Cargo workspace of seven crates. No openFrameworks — there never was any in this project, and the renderer is `wgpu` + `winit` (ADR-0002).
-- **Similarity is a learned embedding** of an aligned crop, cosine distance, behind a YuNet (MIT) detector that emits the five landmarks needed for alignment (ADR-0001). The embedding model is **pluggable and its dimensionality is not fixed** — DINOv2 (Apache 2.0) ships, ArcFace is built for evaluation only, because the piece is expected to be commercial and every mainstream face-recognition weight set is research-only (ADR-0007).
+- **Similarity is a learned embedding** of an aligned crop, cosine distance, behind a YuNet (MIT) detector that emits the five landmarks needed for alignment (ADR-0001). The model is **DINOv2 (Apache 2.0)**, and the piece is committed to *apparent* resemblance rather than identity resemblance. Face-recognition weights are dropped — every mainstream set is research-only and the piece is expected to be commercial (ADR-0007). Embedding width is not fixed; it follows the ViT size.
 - **Layout is two stages**: a self-organizing map supplies ordering, and an LAPJV linear assignment places one Face per Cell with a movement penalty so re-solves animate coherently (ADR-0003).
 - **The Grid is a Window** onto a much larger persistent Corpus, sized on the piece's own clock and drifting slowly across the archive (ADR-0004).
 - **Capture is opt-in** and the Corpus persists, so Consent Records, Receipt Codes, and a tested deletion path are components with tickets (ADR-0005).

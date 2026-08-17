@@ -40,7 +40,7 @@ is a task in Stage 0, not a prerequisite for anything.
 | Concern | Choice | Note |
 | --- | --- | --- |
 | Detect + align | YuNet (MIT) | one step, emits bbox + 5 landmarks |
-| Embed | pluggable; **DINOv2 (Apache 2.0) ships** | ArcFace built for evaluation only — ADR-0007 |
+| Embed | **DINOv2 (Apache 2.0)** | apparent resemblance, not identity — ADR-0007 |
 | Inference runtime | `ort` (ONNX Runtime) | CPU path must stay viable — ADR-0006 |
 | Store | SQLite (`rusqlite`), images on disk | brute-force cosine is fine at this scale |
 | Ordering | self-organizing map, rectangular lattice | written directly, ~300 lines |
@@ -64,13 +64,13 @@ with a finished layer.
 - Delete the retired C++ tree. *(done — `annotators/`, `common/`, `contrib/`,
   `data/`, `CMake/`, the CMake build, `update.sh`, `version.h.in`. `samples/`
   images kept as test fixtures. History preserved: `git log -- annotators/`.)*
-- Model choice: **resolved** in ADR-0007. YuNet (MIT) for detect/align; DINOv2
-  (Apache 2.0) as the shipping embedder; ArcFace built behind the same trait for
-  evaluation only. No longer blocking.
+- Model choice: **resolved** in ADR-0007. YuNet (MIT) for detect/align, DINOv2
+  (Apache 2.0) for the Embedding. Face-recognition weights are dropped entirely.
+  No longer blocking.
 - Stand up the Cargo workspace with the seven empty crates and CI that builds
   them.
 
-#### Why the model is pluggable (short version)
+#### Why not a face-recognition model (short version)
 
 Verified 2026-08-17: YuNet is MIT; InsightFace's *weights* are "non-commercial
 research purposes only" despite MIT code; facenet-pytorch publishes no weight
@@ -79,11 +79,10 @@ Apache 2.0. Every mainstream face-recognition model traces to a research-only
 dataset, so this is not fixable by picking a different repo — and the piece is
 expected to be commercial.
 
-That forced the more interesting question into the open: ArcFace is trained to be
+Chasing that license also surfaced a design point: ArcFace is trained to be
 *invariant* to hair, glasses, expression and lighting, which is much of what a
-visitor means by "looks like me." Identity resemblance and apparent resemblance
-are different artworks. Both get built; DINOv2 ships. Full reasoning and the
-asymmetric-outcome warning are in ADR-0007.
+visitor means by "looks like me." The piece is committing to apparent
+resemblance. Full reasoning in ADR-0007.
 
 ### Stage 1 — Tracer bullet: shutter to wall
 
@@ -98,8 +97,15 @@ Faces are placed in arbitrary order.
 - `afbooth`: wire it together; startup self-check reports provider, backend,
   camera.
 
-**Done when:** pressing a key adds your face to a grid on screen, and it is still
-there after a restart.
+- **Sanity-check what the Embedding is actually keyed on (ADR-0007).** Capture the
+  same person twice against different backgrounds and under different lighting,
+  and two different people against the same background. If the two backgrounds
+  separate one person more than the shared background separates two people, the
+  Embedding is keyed on the room rather than on faces — fix the crop and the
+  lighting before building any layout on top of it.
+
+**Done when:** pressing a key adds your face to a grid on screen, it is still
+there after a restart, and the sanity check above passes.
 
 **Run this stage on every candidate machine before choosing hardware (ADR-0006).**
 
@@ -109,11 +115,6 @@ there after a restart.
 - LAPJV assignment with the movement-penalty cost from ADR-0003.
 - Animated transitions: Faces interpolate from old Cell to new Cell on Re-solve.
 - Expose λ (movement penalty weight) in config and tune it by eye.
-- **The similarity bake-off (ADR-0007).** Embed the same Corpus with both DINOv2
-  and ArcFace, store both, and compare the two walls side by side. Watch
-  specifically for DINOv2 organizing by lighting, background, or clothing rather
-  than by people — that is its characteristic failure. Remember the outcome is
-  asymmetric: DINOv2 winning is a decision, ArcFace winning is a negotiation.
 
 **Done when:** adding a Face visibly reorganizes the wall, and people who look
 alike are adjacent. This is the first stage where the piece is recognizably
@@ -167,8 +168,7 @@ Tracked here, not resolved:
 - Hardware, and therefore the final model size — ADR-0006.
 - Multi-face-in-frame policy at the Shutter.
 - Whether display crops are square or portrait, and how tightly framed.
-- Which similarity model ships, settled by the Stage 2 bake-off — and, if ArcFace
-  wins, whether to open a licensing conversation with InsightFace (ADR-0007).
+- Which DINOv2 ViT size, which follows the hardware decision (ADR-0006).
 
 ## The risk worth restating
 
