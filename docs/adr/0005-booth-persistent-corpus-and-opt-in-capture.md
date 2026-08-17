@@ -58,5 +58,11 @@ Consent and deletion are components with tickets, not policy footnotes:
   Act, which covers biometric data and carries a private right of action. Opt-in
   capture with a working deletion path is a much stronger starting position than
   automatic capture, but it is not a substitute for that review.
+- **The piece is expected to be commercial** — galleries, commissions, admission
+  (decided 2026-08-17). That single fact has two consequences that are easy to
+  treat as unrelated and are not: it removes the "commercial purpose" escape from
+  the RCW 19.375 analysis above, and it removes the non-commercial-research
+  exemption from the model licensing in ADR-0007. Both should be revisited
+  together if that expectation ever changes.
 - Consent text is versioned. If it changes, existing Consent Records must still
   record what was actually shown at the time.

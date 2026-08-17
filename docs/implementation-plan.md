@@ -7,9 +7,9 @@ Derived from a grilling session, 2026-08-17. Vocabulary is defined in
 
 ## The system in one paragraph
 
-A Visitor presses the Shutter. A camera frame is captured; a detector finds the
-face and its five landmarks; the frame is warped to an aligned 112×112 crop; an
-ArcFace-family ONNX model produces a 512-dimension Embedding. The Face, its
+A Visitor presses the Shutter. A camera frame is captured; YuNet finds the face
+and its five landmarks; the frame is warped to an aligned crop; the similarity
+model produces an Embedding. The Face, its
 Embedding, its display crop, and its Consent Record are written to the Corpus,
 and the Visitor is handed a Receipt Code. A self-organizing map trained over the
 Corpus supplies a spatial ordering; a linear assignment solve places the Window's
@@ -39,8 +39,8 @@ is a task in Stage 0, not a prerequisite for anything.
 
 | Concern | Choice | Note |
 | --- | --- | --- |
-| Detect + align | SCRFD or YuNet | one step, emits bbox + 5 landmarks |
-| Embed | ArcFace-family ONNX, 512-D, L2-normalized | cosine distance |
+| Detect + align | YuNet (MIT) | one step, emits bbox + 5 landmarks |
+| Embed | pluggable; **DINOv2 (Apache 2.0) ships** | ArcFace built for evaluation only — ADR-0007 |
 | Inference runtime | `ort` (ONNX Runtime) | CPU path must stay viable — ADR-0006 |
 | Store | SQLite (`rusqlite`), images on disk | brute-force cosine is fine at this scale |
 | Ordering | self-organizing map, rectangular lattice | written directly, ~300 lines |
@@ -64,32 +64,26 @@ with a finished layer.
 - Delete the retired C++ tree. *(done — `annotators/`, `common/`, `contrib/`,
   `data/`, `CMake/`, the CMake build, `update.sh`, `version.h.in`. `samples/`
   images kept as test fixtures. History preserved: `git log -- annotators/`.)*
-- Decide the model (SCRFD/YuNet + ArcFace variant) and **clear its license**.
-  **Blocks Stage 1** — see the licensing note below, this is not a formality.
+- Model choice: **resolved** in ADR-0007. YuNet (MIT) for detect/align; DINOv2
+  (Apache 2.0) as the shipping embedder; ArcFace built behind the same trait for
+  evaluation only. No longer blocking.
 - Stand up the Cargo workspace with the seven empty crates and CI that builds
   them.
 
-#### The model licensing trap
+#### Why the model is pluggable (short version)
 
-Verified 2026-08-17 against the upstream sources:
+Verified 2026-08-17: YuNet is MIT; InsightFace's *weights* are "non-commercial
+research purposes only" despite MIT code; facenet-pytorch publishes no weight
+license and derives from withdrawn datasets; DINOv2's code and weights are
+Apache 2.0. Every mainstream face-recognition model traces to a research-only
+dataset, so this is not fixable by picking a different repo — and the piece is
+expected to be commercial.
 
-- **YuNet** (OpenCV Zoo, `models/face_detection_yunet/`) — **MIT**. No obstacle.
-- **InsightFace** — the *code* is MIT with "no limitation for both academic and
-  commercial usage," but the *pretrained models* are a different matter: "the
-  training data containing the annotation (and the models trained with these
-  data) are available for non-commercial research purposes only." The README
-  further directs anyone wanting `buffalo_l` for other use to contact the
-  maintainers for licensing.
-
-So the default path — SCRFD + ArcFace weights from the InsightFace zoo — carries
-a non-commercial-research-only restriction on exactly the component that defines
-the piece's similarity space. Options are: establish that the installation is
-non-commercial, obtain a license from the maintainers, find
-permissively-licensed weights, or train on a permissively-licensed dataset.
-
-Note that "is this installation commercial?" is the *same question* that governs
-whether RCW 19.375 applies to the Corpus (ADR-0005). One answer, two
-consequences.
+That forced the more interesting question into the open: ArcFace is trained to be
+*invariant* to hair, glasses, expression and lighting, which is much of what a
+visitor means by "looks like me." Identity resemblance and apparent resemblance
+are different artworks. Both get built; DINOv2 ships. Full reasoning and the
+asymmetric-outcome warning are in ADR-0007.
 
 ### Stage 1 — Tracer bullet: shutter to wall
 
@@ -115,6 +109,11 @@ there after a restart.
 - LAPJV assignment with the movement-penalty cost from ADR-0003.
 - Animated transitions: Faces interpolate from old Cell to new Cell on Re-solve.
 - Expose λ (movement penalty weight) in config and tune it by eye.
+- **The similarity bake-off (ADR-0007).** Embed the same Corpus with both DINOv2
+  and ArcFace, store both, and compare the two walls side by side. Watch
+  specifically for DINOv2 organizing by lighting, background, or clothing rather
+  than by people — that is its characteristic failure. Remember the outcome is
+  asymmetric: DINOv2 winning is a decision, ArcFace winning is a negotiation.
 
 **Done when:** adding a Face visibly reorganizes the wall, and people who look
 alike are adjacent. This is the first stage where the piece is recognizably
@@ -168,6 +167,8 @@ Tracked here, not resolved:
 - Hardware, and therefore the final model size — ADR-0006.
 - Multi-face-in-frame policy at the Shutter.
 - Whether display crops are square or portrait, and how tightly framed.
+- Which similarity model ships, settled by the Stage 2 bake-off — and, if ArcFace
+  wins, whether to open a licensing conversation with InsightFace (ADR-0007).
 
 ## The risk worth restating
 

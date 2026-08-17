@@ -37,12 +37,14 @@ by SCRFD or YuNet, not by a Haar cascade plus a separate ASM fit.
 
 ## Decision
 
-Similarity is defined by a learned face embedding: a 512-dimension L2-normalized
-vector from an ArcFace-family ONNX model, compared by cosine distance.
+Similarity is defined by a learned embedding of an aligned face crop, compared by
+cosine distance, rather than by handcrafted features. **Which** model produces
+that embedding — and its dimensionality — is settled separately in ADR-0007,
+which supersedes this ADR's original assumption of an ArcFace-family model.
 
-The detection/alignment front end is SCRFD or YuNet, producing a bounding box and
-five landmarks, which are warped by similarity transform to the 112×112 crop the
-embedding model expects.
+The detection/alignment front end is YuNet, producing a bounding box and five
+landmarks, which are warped by similarity transform to the crop the embedding
+model expects.
 
 `face_isolator`, `skin_color_picker`, and `feature_extractor` are retired. The
 vendored `asmlib-opencv`, the Haar cascades in `data/`, and TCLAP are retired with

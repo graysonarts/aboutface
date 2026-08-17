@@ -34,10 +34,12 @@ same person, and deliberately does not link them.
 persists between installations and grows without bound. The Corpus is the
 artwork's memory.
 
-**Embedding** — the 512-dimension L2-normalized vector produced from an aligned
-Face crop by the face-recognition model. Distance between Embeddings is cosine
-distance. This is what "similar looking" means operationally, and it is legally a
-biometric identifier — treat it with the same care as the photograph.
+**Embedding** — the L2-normalized vector produced from an aligned Face crop by
+the similarity model. Distance between Embeddings is cosine distance. This is
+what "similar looking" means operationally. **Its dimensionality is
+model-dependent** — nothing may assume 512 (ADR-0007) — and every stored
+Embedding records which model produced it. Treat an Embedding with the same care
+as the photograph it came from.
 
 **Neighborhood** — the set of Faces nearest a given Face in Embedding space.
 
