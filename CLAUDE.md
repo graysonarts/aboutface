@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **About:Face** is an art project (early development): a booth photographs consenting visitors and displays them alongside similar-looking people, on a wall that rearranges itself so people who look alike sit near each other.
 
-## Current state: Stage 0 complete
+## Current state: Stage 1 in progress
 
-A Cargo workspace of seven crates, CI, and the domain types in `afcore`. **No pipeline yet** — nothing captures, embeds, stores, lays out, or renders. `afbooth` prints its configuration and exits. Stage 1 in the implementation plan is the first end-to-end slice.
+A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk. **Nothing stores, lays out, or renders yet**, and `afbooth` still prints its configuration and exits.
 
 ```sh
 cargo test --workspace
@@ -17,6 +17,7 @@ cargo fmt --all
 ./scripts/fetch-models.sh                             # ONNX files; not committed
 cargo run -p afbooth                                  # startup self-check
 cargo run -p afvision --example detect_face -- samples/1.jpg   # detect + both crops
+cargo run -p afvision --example embed_faces -- samples/1.jpg samples/3.jpg  # detect -> align -> embed
 ```
 
 `cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId` plus the ONNX Runtime execution provider selected. Missing model files exit non-zero with the fetch command. Where the weights come from: [`docs/models.md`](docs/models.md).
@@ -57,7 +58,7 @@ Everything below is settled in the ADRs; this is a summary, not the source of tr
 
 ## Next actionable work
 
-Stage 0 in the implementation plan: stand up the Cargo workspace with the seven crates and CI. The model-licensing question that previously blocked it is resolved in ADR-0007.
+Stage 1 in the implementation plan: `afstore`'s schema and write path — Face, Embedding (with its model identifier), crops, original frame — then a fixed grid on screen in `afrender` and the wiring in `afbooth`. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
 
 ## `samples/`
 

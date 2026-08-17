@@ -32,15 +32,21 @@
 //!   land on [`aligned_template`].
 //! - [`display_crop`] — the portrait the wall shows, framed by
 //!   [`DisplayCropSpec`] because the framing is an open question.
+//! - [`FaceEmbedder`] — DINOv2 over `ort`; hands back an [`afcore::Embedding`]
+//!   whose width came from the loaded graph and whose [`afcore::ModelId`] is
+//!   the loaded file's, so comparisons across models are refused rather than
+//!   degraded.
 //!
-//! Embedding is not here yet; detection and alignment run off a file on disk:
+//! The whole path runs off files on disk, with no camera and no booth:
 //!
 //! ```text
 //! cargo run -p afvision --example detect_face -- samples/1.jpg
+//! cargo run -p afvision --example embed_faces -- samples/1.jpg samples/3.jpg
 //! ```
 
 mod align;
 mod detect;
+mod embed;
 mod geometry;
 mod model;
 mod provider;
@@ -49,6 +55,7 @@ pub use align::{
     ALIGNED_SIZE, DisplayCropError, DisplayCropSpec, align, aligned_template, display_crop,
 };
 pub use detect::{DetectError, Detection, FaceCountError, FaceDetector, Faces};
+pub use embed::{EmbedError, FaceEmbedder};
 pub use geometry::{BoundingBox, GeometryError, Landmarks, Point, SimilarityTransform};
 pub use model::{ModelError, ModelRole, ModelSpec};
 pub use provider::{ExecutionProviderKind, runtime_info, select_execution_provider};
