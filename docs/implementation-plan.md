@@ -61,11 +61,35 @@ with a finished layer.
 
 - Land `CONTEXT.md` and the ADRs. *(done — this commit)*
 - Update `README.md` to the booth framing. *(done — this commit)*
-- Decide the model (SCRFD/YuNet + ArcFace variant) and confirm its license
-  permits installation use. **Blocks Stage 1.**
-- Delete the retired C++ tree, or explicitly decide to leave it in place.
+- Delete the retired C++ tree. *(done — `annotators/`, `common/`, `contrib/`,
+  `data/`, `CMake/`, the CMake build, `update.sh`, `version.h.in`. `samples/`
+  images kept as test fixtures. History preserved: `git log -- annotators/`.)*
+- Decide the model (SCRFD/YuNet + ArcFace variant) and **clear its license**.
+  **Blocks Stage 1** — see the licensing note below, this is not a formality.
 - Stand up the Cargo workspace with the seven empty crates and CI that builds
   them.
+
+#### The model licensing trap
+
+Verified 2026-08-17 against the upstream sources:
+
+- **YuNet** (OpenCV Zoo, `models/face_detection_yunet/`) — **MIT**. No obstacle.
+- **InsightFace** — the *code* is MIT with "no limitation for both academic and
+  commercial usage," but the *pretrained models* are a different matter: "the
+  training data containing the annotation (and the models trained with these
+  data) are available for non-commercial research purposes only." The README
+  further directs anyone wanting `buffalo_l` for other use to contact the
+  maintainers for licensing.
+
+So the default path — SCRFD + ArcFace weights from the InsightFace zoo — carries
+a non-commercial-research-only restriction on exactly the component that defines
+the piece's similarity space. Options are: establish that the installation is
+non-commercial, obtain a license from the maintainers, find
+permissively-licensed weights, or train on a permissively-licensed dataset.
+
+Note that "is this installation commercial?" is the *same question* that governs
+whether RCW 19.375 applies to the Corpus (ADR-0005). One answer, two
+consequences.
 
 ### Stage 1 — Tracer bullet: shutter to wall
 

@@ -15,12 +15,12 @@ This repo is **single-context** — one glossary and one ADR directory at the ro
 
 ```
 /
-├── CONTEXT.md                         ← not created yet
-├── docs/adr/                          ← not created yet
-│   ├── 0001-<decision>.md
-│   └── 0002-<decision>.md
-├── annotators/                        ← the per-annotator executables
-└── common/                            ← the shared aboutface_common library
+├── CONTEXT.md                         ← the project glossary
+├── docs/adr/                          ← 0001-0006, populated
+│   ├── 0001-retire-opencv-annotators-for-learned-embeddings.md
+│   └── ...
+├── docs/implementation-plan.md        ← the staged plan
+└── samples/                           ← test fixture images
 ```
 
 If this ever splits into genuinely separate contexts, add a root `CONTEXT-MAP.md`

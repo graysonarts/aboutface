@@ -58,10 +58,14 @@ them.
 - The `X,Y+WxH` wire format is retired. Nothing crosses a process boundary any
   more, so a Rust type replaces it. `CLAUDE.md`'s description of it as "the
   inter-process wire format" becomes historical.
-- The C++ tree is kept in git history and may be deleted from the working tree.
-  It is not maintained, not built, and not a reference implementation.
+- The C++ tree was deleted from the working tree on 2026-08-17. It remains in git
+  history (`git log -- annotators/`). It is not maintained, not built, and not a
+  reference implementation. The `samples/` images survive as test fixtures.
 - A model file must now be vendored or fetched, with a license that permits
-  installation use. Model choice and provenance are a task, not an assumption.
+  installation use. Model choice and provenance are a task, not an assumption —
+  and a sharper one than it first appears: InsightFace's pretrained weights are
+  non-commercial-research-only despite its MIT code. See the licensing note in
+  the implementation plan.
 - Two different crops are needed per Face and must not be confused: the tight
   aligned 112×112 crop that feeds the model, and a looser portrait crop for
   display. Only the first is geometrically constrained.
