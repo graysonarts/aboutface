@@ -6,7 +6,9 @@ use nokhwa::pixel_format::RgbFormat;
 use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType};
 use nokhwa::{Camera as NokhwaDevice, NokhwaError};
 
-use crate::camera::{Camera, CameraDescription, CameraError, CameraSelector};
+use crate::camera::{
+    Camera, CameraDescription, CameraError, CameraSelector, WARMUP_BUDGET, settle,
+};
 use crate::frame::Frame;
 
 /// How long to wait for the operating system's camera-permission prompt.
@@ -162,9 +164,19 @@ impl Camera for NokhwaCamera {
             .map_err(|error| classify(&error, "open", &self.selector, &self.name))?;
 
         // The stream is open but the sensor is not ready; see `WARMUP_FRAMES`.
-        // Errors here are swallowed on purpose — a warm-up is not the place to
-        // diagnose a device, and the Visitor's actual grab reports properly.
-        settle(self.warmup_frames, || device.frame().map(|_| ()));
+        let discarded = settle(self.warmup_frames, WARMUP_BUDGET, || {
+            device.frame().map(|_| ())
+        });
+
+        // A camera asked for frames that produced none is blind, not merely
+        // slow. Saying so here stops it passing the startup self-check and
+        // then failing — mislabelled as a disconnection — under a Visitor.
+        if self.warmup_frames > 0 && discarded == 0 {
+            return Err(CameraError::NoFrames {
+                device: self.name.clone(),
+                message: format!("no frame in {} warm-up attempts", self.warmup_frames),
+            });
+        }
 
         self.device = Some(device);
         Ok(())
@@ -221,20 +233,6 @@ impl Camera for NokhwaCamera {
             },
         }
     }
-}
-
-/// Pulls and discards `rounds` frames, returning how many were discarded.
-///
-/// Stops at the first failure rather than retrying: warm-up is best effort, and
-/// a device that has genuinely gone away should be reported by the grab the
-/// Visitor asked for, not by a frame nobody wanted.
-fn settle<E>(rounds: u32, mut grab: impl FnMut() -> Result<(), E>) -> u32 {
-    for discarded in 0..rounds {
-        if grab().is_err() {
-            return discarded;
-        }
-    }
-    rounds
 }
 
 /// Sorts a [`NokhwaError`] into the failures an operator can act on.
@@ -341,45 +339,6 @@ mod tests {
     }
 
     #[test]
-    fn should_discard_the_requested_frames_when_every_grab_succeeds() {
-        let mut grabbed = 0;
-
-        let discarded = settle(5, || {
-            grabbed += 1;
-            Ok::<(), ()>(())
-        });
-
-        assert_eq!(discarded, 5);
-        assert_eq!(grabbed, 5);
-    }
-
-    #[test]
-    fn should_stop_discarding_when_a_grab_fails() {
-        let mut grabbed = 0;
-
-        let discarded = settle(10, || {
-            grabbed += 1;
-            if grabbed < 3 { Ok(()) } else { Err(()) }
-        });
-
-        assert_eq!(discarded, 2, "the failing grab is not a discarded frame");
-        assert_eq!(grabbed, 3, "warm-up stops rather than retrying");
-    }
-
-    #[test]
-    fn should_grab_nothing_when_no_warm_up_is_configured() {
-        let mut grabbed = 0;
-
-        let discarded = settle(0, || {
-            grabbed += 1;
-            Ok::<(), ()>(())
-        });
-
-        assert_eq!(discarded, 0);
-        assert_eq!(grabbed, 0);
-    }
-
-    #[test]
     fn should_warm_up_by_default_so_the_first_capture_is_not_black() {
         let camera = NokhwaCamera::new(CameraSelector::Default);
 
@@ -387,13 +346,6 @@ mod tests {
             camera.warmup_frames > 0,
             "a default with no warm-up reintroduces the black first frame"
         );
-    }
-
-    #[test]
-    fn should_take_the_configured_warm_up_when_one_is_given() {
-        let camera = NokhwaCamera::new(CameraSelector::Default).with_warmup_frames(0);
-
-        assert_eq!(camera.warmup_frames, 0);
     }
 
     #[test]

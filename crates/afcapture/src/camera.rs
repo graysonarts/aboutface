@@ -1,8 +1,54 @@
 //! The seam that keeps the hardware decision open.
 
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use crate::frame::{Frame, FrameError};
+
+/// The longest a warm-up may take, whatever frame rate the sensor turns out to
+/// run at.
+///
+/// Nothing pins frame rate — a backend asks for a resolution, not a cadence —
+/// so a frame count means one duration on the camera it was measured on and
+/// another on the hardware ADR-0006 has not chosen yet. This bounds the wait so
+/// an unknown sensor delays the booth's startup rather than hanging it.
+pub(crate) const WARMUP_BUDGET: Duration = Duration::from_secs(3);
+
+/// Pulls and discards frames so a sensor can settle, per [`Camera::open`]'s
+/// contract. Returns how many were discarded.
+///
+/// Stops at whichever comes first: `rounds` frames, `budget` elapsed, or a
+/// failing grab.
+///
+/// Both limits are needed. Auto-exposure converges on a clock, but the only
+/// thing a backend can pull is frames, and nothing pins how fast they arrive —
+/// `budget` keeps a slow sensor from stalling the booth, `rounds` keeps a fast
+/// one from spinning through hundreds of frames to fill the time.
+///
+/// A failing grab ends the warm-up rather than retrying: a discarded frame is
+/// not the place to diagnose a device. The caller decides what zero frames
+/// means — for [`Camera::open`] it is [`CameraError::NoFrames`].
+pub(crate) fn settle<E>(
+    rounds: u32,
+    budget: Duration,
+    mut grab: impl FnMut() -> Result<(), E>,
+) -> u32 {
+    let deadline = Instant::now() + budget;
+    let mut discarded = 0;
+
+    while discarded < rounds {
+        if grab().is_err() {
+            break;
+        }
+        discarded += 1;
+
+        if Instant::now() >= deadline {
+            break;
+        }
+    }
+
+    discarded
+}
 
 /// Which camera to open.
 ///
@@ -90,6 +136,20 @@ pub enum CameraError {
         message: String,
     },
 
+    /// The stream started but never yielded a frame.
+    ///
+    /// Distinct from [`CameraError::Disconnected`], which means a working
+    /// device went away: this one never worked. Reporting it at
+    /// [`Camera::open`] keeps a blind camera from passing the booth's startup
+    /// self-check and failing in front of a Visitor instead (ADR-0006).
+    #[error("camera {device} opened but produced no frames: {message}")]
+    NoFrames {
+        /// Device the backend named.
+        device: String,
+        /// What was being attempted.
+        message: String,
+    },
+
     /// A frame was requested from a camera that is not open.
     #[error("camera is not open")]
     NotOpen,
@@ -118,11 +178,25 @@ pub enum CameraError {
 pub trait Camera {
     /// Opens the device and starts its stream.
     ///
+    /// # Contract
+    ///
+    /// On success the very next [`Camera::grab`] must return a usable frame.
+    /// Sensors do not honour this by themselves — AVFoundation hands back an
+    /// open stream while the first frames are still pure black — so an
+    /// implementation whose device needs to settle must do that settling here;
+    /// this crate's `settle` helper is what the in-tree backends use. A Visitor
+    /// presses the Shutter once; that first frame is the whole Capture.
+    ///
+    /// This lives on the trait rather than in one backend because ADR-0006
+    /// treats the backend as replaceable: a future implementation must inherit
+    /// the obligation, not rediscover the black frame.
+    ///
     /// # Errors
     ///
     /// Returns [`CameraError::NotFound`], [`CameraError::Busy`] or
     /// [`CameraError::PermissionDenied`] where the backend allows them to be
-    /// told apart, and [`CameraError::Backend`] otherwise.
+    /// told apart, [`CameraError::NoFrames`] if the stream started but yielded
+    /// nothing, and [`CameraError::Backend`] otherwise.
     fn open(&mut self) -> Result<(), CameraError>;
 
     /// Grabs exactly one frame.
@@ -167,6 +241,8 @@ impl<C: Camera + ?Sized> Camera for Box<C> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::testing::FakeCamera;
 
@@ -176,6 +252,130 @@ mod tests {
         camera.open().expect("fake camera opens");
 
         assert_eq!(camera.grab().expect("a frame").width(), 2);
+    }
+
+    fn is_black(frame: &Frame) -> bool {
+        frame.pixels().iter().all(|channel| *channel == 0)
+    }
+
+    #[test]
+    fn should_hand_out_a_black_frame_when_the_sensor_has_not_settled() {
+        // Arrange: the defect itself — a sensor whose first frames carry no
+        // signal, opened without a warm-up.
+        let mut camera = FakeCamera::still(4, 4).with_black_frames(2);
+
+        // Act
+        camera.open().expect("fake camera opens");
+        let frame = camera.grab().expect("a frame");
+
+        // Assert
+        assert!(
+            is_black(&frame),
+            "without a warm-up the Visitor's Capture is the unsettled frame"
+        );
+    }
+
+    #[test]
+    fn should_hand_out_a_settled_frame_when_open_warms_the_sensor_up() {
+        // Arrange: the same sensor, opened by a backend that honours the
+        // contract on `Camera::open`.
+        let mut camera = FakeCamera::still(4, 4)
+            .with_black_frames(2)
+            .with_warmup_frames(2);
+
+        // Act
+        camera.open().expect("fake camera opens");
+        let frame = camera.grab().expect("a frame");
+
+        // Assert
+        assert!(
+            !is_black(&frame),
+            "open must consume the black frames so the first Capture is real"
+        );
+    }
+
+    #[test]
+    fn should_not_count_warm_up_frames_as_frames_handed_out() {
+        let mut camera = FakeCamera::still(4, 4).with_warmup_frames(3);
+
+        camera.open().expect("fake camera opens");
+
+        assert_eq!(camera.grabs(), 0, "frames nobody received are not Captures");
+    }
+
+    #[test]
+    fn should_refuse_to_open_when_the_sensor_never_yields_a_frame() {
+        // A camera that answers every grab with an error is blind, not slow.
+        let mut camera = FakeCamera::replaying(Vec::<PathBuf>::new()).with_warmup_frames(4);
+
+        let error = camera.open().expect_err("a blind camera must not open");
+
+        assert!(matches!(error, CameraError::NoFrames { .. }), "{error}");
+        assert!(
+            !camera.is_open(),
+            "a camera that failed to open must not report itself open"
+        );
+    }
+
+    #[test]
+    fn should_discard_the_requested_frames_when_every_grab_succeeds() {
+        let mut grabbed = 0;
+
+        let discarded = settle(5, Duration::from_secs(60), || {
+            grabbed += 1;
+            Ok::<(), ()>(())
+        });
+
+        assert_eq!(discarded, 5);
+        assert_eq!(grabbed, 5);
+    }
+
+    #[test]
+    fn should_stop_discarding_when_a_grab_fails() {
+        let mut grabbed = 0;
+
+        let discarded = settle(10, Duration::from_secs(60), || {
+            grabbed += 1;
+            if grabbed < 3 { Ok(()) } else { Err(()) }
+        });
+
+        assert_eq!(discarded, 2, "the failing grab is not a discarded frame");
+        assert_eq!(grabbed, 3, "warm-up stops rather than retrying");
+    }
+
+    #[test]
+    fn should_grab_nothing_when_no_warm_up_is_configured() {
+        let mut grabbed = 0;
+
+        let discarded = settle(0, Duration::from_secs(60), || {
+            grabbed += 1;
+            Ok::<(), ()>(())
+        });
+
+        assert_eq!(discarded, 0);
+        assert_eq!(grabbed, 0);
+    }
+
+    #[test]
+    fn should_stop_discarding_when_the_budget_runs_out_before_the_frames_do() {
+        let mut grabbed = 0;
+
+        // A sensor slow enough that the frame count would take far longer than
+        // the booth can wait — the case the budget exists for.
+        let discarded = settle(1_000, Duration::from_millis(30), || {
+            grabbed += 1;
+            std::thread::sleep(Duration::from_millis(10));
+            Ok::<(), ()>(())
+        });
+
+        assert!(
+            discarded < 1_000,
+            "the budget must cut the warm-up short, discarded {discarded}"
+        );
+        assert!(
+            discarded > 0,
+            "the budget must not prevent warming up at all"
+        );
     }
 
     #[test]

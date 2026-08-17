@@ -4,8 +4,10 @@ tmp
 
 # Corpus data must never be committed — it is photographs of people.
 /corpus
-# The Shutter's default output directory, for the same reason.
-/captures
+# Where the keypress example writes its Captures, for the same reason. Not
+# anchored: the example writes relative to the working directory, so this must
+# match wherever it is run from.
+captures/
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

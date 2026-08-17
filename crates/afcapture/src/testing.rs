@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::camera::{Camera, CameraDescription, CameraError};
+use crate::camera::{Camera, CameraDescription, CameraError, WARMUP_BUDGET, settle};
 use crate::frame::Frame;
 
 /// Where a [`FakeCamera`]'s frames come from.
@@ -41,8 +41,11 @@ pub struct FakeCamera {
     replay: Replay,
     open_result: Option<CameraError>,
     disconnect_after: Option<usize>,
+    black_frames: u32,
+    warmup_frames: u32,
     open: bool,
     grabs: usize,
+    position: u32,
 }
 
 impl FakeCamera {
@@ -76,6 +79,29 @@ impl FakeCamera {
         self
     }
 
+    /// Hands out `count` pure-black frames before any real one, the way a real
+    /// sensor does while auto-exposure converges.
+    ///
+    /// Measured on a FaceTime HD camera: the first two frames were
+    /// byte-identical black. Modelling it here is what lets the [`Camera::open`]
+    /// warm-up contract be tested without hardware — and stops later stages
+    /// passing against a fake that is kinder than the device.
+    #[must_use]
+    pub fn with_black_frames(mut self, count: u32) -> Self {
+        self.black_frames = count;
+        self
+    }
+
+    /// Discards `count` frames on [`Camera::open`], as a real backend does.
+    ///
+    /// Defaults to none: most tests want the frame they asked for, and a fake
+    /// that silently ate frames would make grab counts hard to reason about.
+    #[must_use]
+    pub fn with_warmup_frames(mut self, count: u32) -> Self {
+        self.warmup_frames = count;
+        self
+    }
+
     /// How many frames this camera has handed out.
     pub fn grabs(&self) -> usize {
         self.grabs
@@ -92,12 +118,33 @@ impl FakeCamera {
             replay,
             open_result: None,
             disconnect_after: None,
+            black_frames: 0,
+            warmup_frames: 0,
             open: false,
             grabs: 0,
+            position: 0,
         }
     }
 
-    fn next_frame(&self) -> Result<Frame, CameraError> {
+    /// Pulls the next frame off the fake sensor, black ones first.
+    ///
+    /// Counts separately from [`FakeCamera::grabs`]: frames a warm-up discards
+    /// were never handed to anybody.
+    fn replay_one(&mut self) -> Result<Frame, CameraError> {
+        let position = self.position;
+        self.position += 1;
+
+        let frame = self.source_frame(position.saturating_sub(self.black_frames))?;
+        if position >= self.black_frames {
+            return Ok(frame);
+        }
+
+        // A settling sensor returns the right shape with no signal in it.
+        Frame::from_rgb8(frame.width(), frame.height(), vec![0; frame.pixels().len()])
+            .map_err(CameraError::from)
+    }
+
+    fn source_frame(&self, index: u32) -> Result<Frame, CameraError> {
         match &self.replay {
             Replay::Synthetic { width, height } => Frame::from_rgb8(
                 *width,
@@ -112,7 +159,7 @@ impl FakeCamera {
                         message: "fake camera has no frames to replay".to_owned(),
                     });
                 }
-                decode_rgb8(&paths[self.grabs % paths.len()])
+                decode_rgb8(&paths[index as usize % paths.len()])
             }
         }
     }
@@ -135,6 +182,21 @@ impl Camera for FakeCamera {
             return Err(error);
         }
         self.open = true;
+
+        // The same obligation the real backend carries, so a test proves the
+        // contract rather than one implementation of it.
+        let discarded = settle(self.warmup_frames, WARMUP_BUDGET, || {
+            self.replay_one().map(|_| ())
+        });
+
+        if self.warmup_frames > 0 && discarded == 0 {
+            self.open = false;
+            return Err(CameraError::NoFrames {
+                device: "fake".to_owned(),
+                message: format!("no frame in {} warm-up attempts", self.warmup_frames),
+            });
+        }
+
         Ok(())
     }
 
@@ -152,7 +214,7 @@ impl Camera for FakeCamera {
             });
         }
 
-        let frame = self.next_frame()?;
+        let frame = self.replay_one()?;
         self.grabs += 1;
         Ok(frame)
     }
