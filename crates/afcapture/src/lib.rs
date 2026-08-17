@@ -15,8 +15,13 @@
 //! - [`Camera`] — open, grab one frame, close, describe. The seam.
 //! - [`Frame`] — a plain RGB8 buffer, the only thing that crosses the seam.
 //! - [`Shutter`] — one press, one frame, one file on disk.
+//! - `NokhwaCamera` — the real device, behind the default-on `nokhwa-backend`
+//!   feature.
 //! - [`testing::FakeCamera`] — replays photographs from disk, so every later
 //!   stage is testable on a machine with no webcam.
+//!
+//! Swap `FakeCamera` for `NokhwaCamera::new(CameraSelector::Default)` and this
+//! is the booth:
 //!
 //! ```no_run
 //! use afcapture::{Shutter, testing::{FakeCamera, sample_path}};
@@ -39,6 +44,12 @@ mod shutter;
 
 pub mod testing;
 
+#[cfg(feature = "nokhwa-backend")]
+mod nokhwa_backend;
+
 pub use camera::{Camera, CameraDescription, CameraError, CameraSelector};
 pub use frame::{Frame, FrameError};
 pub use shutter::{Capture, Shutter, ShutterError};
+
+#[cfg(feature = "nokhwa-backend")]
+pub use nokhwa_backend::NokhwaCamera;
