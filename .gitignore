@@ -4,6 +4,8 @@ tmp
 
 # Corpus data must never be committed — it is photographs of people.
 /corpus
+# The Shutter's default output directory, for the same reason.
+/captures
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
