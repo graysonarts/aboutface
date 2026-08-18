@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::camera::{Camera, CameraError};
+use crate::frame::Frame;
 
 /// Ways a Shutter press fails.
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +23,10 @@ pub enum ShutterError {
         #[source]
         source: std::io::Error,
     },
+
+    /// A Shutter built to expose only was asked to write.
+    #[error("this shutter has no capture directory — it exposes, it does not press")]
+    NoDirectory,
 
     /// The frame arrived but could not be written.
     #[error("could not write capture to {path}")]
@@ -62,7 +67,9 @@ pub struct Capture {
 #[derive(Debug)]
 pub struct Shutter<C: Camera> {
     camera: C,
-    directory: PathBuf,
+    /// Where [`Shutter::press`] writes. `None` for a Shutter built with
+    /// [`Shutter::over`], which only exposes.
+    directory: Option<PathBuf>,
     sequence: u64,
 }
 
@@ -73,7 +80,21 @@ impl<C: Camera> Shutter<C> {
     pub fn new(camera: C, directory: impl Into<PathBuf>) -> Self {
         Self {
             camera,
-            directory: directory.into(),
+            directory: Some(directory.into()),
+            sequence: 0,
+        }
+    }
+
+    /// Builds a Shutter that only ever [`Shutter::expose`]s.
+    ///
+    /// The booth stores the original frame in the Corpus itself (ADR-0006), so
+    /// it has nowhere to write loose Captures and should not be made to name a
+    /// directory it will never use. Pressing one of these is
+    /// [`ShutterError::NoDirectory`].
+    pub fn over(camera: C) -> Self {
+        Self {
+            camera,
+            directory: None,
             sequence: 0,
         }
     }
@@ -89,6 +110,21 @@ impl<C: Camera> Shutter<C> {
         Ok(())
     }
 
+    /// Grabs exactly one frame and hands it back, writing nothing.
+    ///
+    /// This is the press the booth makes: the Corpus retains the original
+    /// frame itself (ADR-0006), so a second copy in a loose directory would be
+    /// an archive nobody deletes on a Receipt Code. [`Shutter::press`] is the
+    /// same gesture for a caller that has no Corpus to put it in.
+    ///
+    /// # Errors
+    ///
+    /// Propagates whatever [`Camera::grab`] reported, including
+    /// [`CameraError::Disconnected`] for a camera unplugged mid-run.
+    pub fn expose(&mut self) -> Result<Frame, ShutterError> {
+        Ok(self.camera.grab()?)
+    }
+
     /// Grabs exactly one frame and writes it to disk.
     ///
     /// # Errors
@@ -98,17 +134,16 @@ impl<C: Camera> Shutter<C> {
     /// [`ShutterError::Directory`] or [`ShutterError::Write`] if it arrived but
     /// could not be stored.
     pub fn press(&mut self) -> Result<Capture, ShutterError> {
-        let frame = self.camera.grab()?;
+        let directory = self.directory.clone().ok_or(ShutterError::NoDirectory)?;
+        let frame = self.expose()?;
         let captured_at = SystemTime::now();
 
-        std::fs::create_dir_all(&self.directory).map_err(|source| ShutterError::Directory {
-            path: self.directory.clone(),
+        std::fs::create_dir_all(&directory).map_err(|source| ShutterError::Directory {
+            path: directory.clone(),
             source,
         })?;
 
-        let path = self
-            .directory
-            .join(capture_file_name(captured_at, self.sequence));
+        let path = directory.join(capture_file_name(captured_at, self.sequence));
         self.sequence += 1;
 
         let width = frame.width();
@@ -148,9 +183,9 @@ impl<C: Camera> Shutter<C> {
         &self.camera
     }
 
-    /// Where Captures are written.
-    pub fn directory(&self) -> &Path {
-        &self.directory
+    /// Where Captures are written, if this Shutter writes them at all.
+    pub fn directory(&self) -> Option<&Path> {
+        self.directory.as_deref()
     }
 }
 
@@ -173,6 +208,13 @@ mod tests {
     use crate::camera::CameraSelector;
     use crate::testing::{FakeCamera, sample_path};
 
+    /// Where a writing Shutter puts its Captures.
+    fn writes_to(shutter: &Shutter<FakeCamera>) -> &Path {
+        shutter
+            .directory()
+            .expect("a shutter built with a directory")
+    }
+
     fn shutter_over(camera: FakeCamera) -> (Shutter<FakeCamera>, tempfile::TempDir) {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let shutter = Shutter::new(camera, directory.path().join("captures"));
@@ -187,6 +229,29 @@ mod tests {
         shutter.press().expect("a capture");
 
         assert_eq!(shutter.camera().grabs(), 1);
+    }
+
+    #[test]
+    fn should_refuse_to_press_when_the_shutter_only_exposes() {
+        let mut shutter = Shutter::over(FakeCamera::still(4, 4));
+        shutter.open().expect("camera opens");
+
+        assert!(matches!(shutter.press(), Err(ShutterError::NoDirectory)));
+    }
+
+    #[test]
+    fn should_hand_back_one_frame_without_writing_it_when_exposed() {
+        let (mut shutter, _directory) = shutter_over(FakeCamera::replaying([sample_path("1.jpg")]));
+        shutter.open().expect("camera opens");
+
+        let frame = shutter.expose().expect("a frame");
+
+        assert_eq!(shutter.camera().grabs(), 1);
+        assert!(frame.width() > 0);
+        assert!(
+            !writes_to(&shutter).exists(),
+            "an exposure the booth stores itself must leave no second copy"
+        );
     }
 
     #[test]
@@ -215,7 +280,7 @@ mod tests {
 
         assert_ne!(first.path, second.path);
         assert_eq!(
-            std::fs::read_dir(shutter.directory())
+            std::fs::read_dir(writes_to(&shutter))
                 .expect("capture directory exists")
                 .count(),
             2
@@ -226,11 +291,11 @@ mod tests {
     fn should_create_the_capture_directory_when_it_does_not_exist() {
         let (mut shutter, _directory) = shutter_over(FakeCamera::still(4, 4));
         shutter.open().expect("camera opens");
-        assert!(!shutter.directory().exists());
+        assert!(!writes_to(&shutter).exists());
 
         shutter.press().expect("a capture");
 
-        assert!(shutter.directory().is_dir());
+        assert!(writes_to(&shutter).is_dir());
     }
 
     #[test]
@@ -279,7 +344,7 @@ mod tests {
 
         let _ = shutter.press().expect_err("camera was never opened");
 
-        assert!(!shutter.directory().exists());
+        assert!(!writes_to(&shutter).exists());
     }
 
     #[test]

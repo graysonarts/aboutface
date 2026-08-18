@@ -98,7 +98,12 @@ Faces are placed in arbitrary order.
   crops, original frame.
 - `afrender`: a fixed grid of stored Faces on screen, filling in arbitrary order.
 - `afbooth`: wire it together; startup self-check reports provider, backend,
-  camera.
+  camera. *(done — `Pipeline` is the whole path from `Shutter::expose` to
+  `Corpus::ingest`, timed per stage; `afrender::show_live` answers a SPACE press
+  by asking the booth for the Window again, and ESC closes the wall. A frame
+  with no face, or with several, is reported and leaves the Corpus untouched.
+  Exercised end to end by `crates/afbooth/tests/tracer_bullet.rs` against the
+  fake `Camera` and a temporary Corpus.)*
 
 - **Sanity-check what the Embedding is actually keyed on (ADR-0007).** Capture the
   same person twice against different backgrounds and under different lighting,

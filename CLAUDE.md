@@ -8,21 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state: Stage 1 in progress
 
-A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk; `afstore` holds a migrated Corpus that ingests a Face, reads it back, and hands the wall a Window of Faces; `afrender` draws that Window as a Grid of Cells. **Nothing orders or animates yet** — Faces fill Cells in arbitrary order — and `afbooth` still prints its configuration and exits.
+A Cargo workspace of seven crates, CI, and the domain types in `afcore`. `afcapture` grabs frames behind the `Camera` trait; `afvision` runs the whole `detect -> align -> embed` path off files on disk; `afstore` holds a migrated Corpus that ingests a Face, reads it back, and hands the wall a Window of Faces; `afrender` draws that Window as a Grid of Cells. `afbooth` wires all of it together: SPACE captures, the Face joins the wall, and it is still there after a restart. **Nothing orders or animates yet** — Faces fill Cells in arbitrary order.
 
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ./scripts/fetch-models.sh                             # ONNX files; not committed
-cargo run -p afbooth                                  # startup self-check
+cargo run -p afbooth                                  # the booth: SPACE captures, ESC quits
 cargo run -p afvision --example detect_face -- samples/1.jpg   # detect + both crops
 cargo run -p afvision --example embed_faces -- samples/1.jpg samples/3.jpg  # detect -> align -> embed
 cargo run -p afrender --example demo_corpus -- /tmp/corpus samples/*.jpg    # fixture Corpus, no camera
 cargo run -p afrender --example wall -- /tmp/corpus                         # the wall
 ```
 
-`cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId` plus the ONNX Runtime execution provider selected. Missing model files exit non-zero with the fetch command. Where the weights come from: [`docs/models.md`](docs/models.md).
+`cargo run -p afbooth` reads `booth.toml` and reports each model's path, presence and `ModelId`, the ONNX Runtime execution provider, the GPU adapter and backend, the Grid, and the camera it opened. Missing model files or no GPU adapter exit non-zero; an absent, busy or permission-denied camera exits non-zero with which of the three it was. Each Capture prints its per-stage timings — that reporting is how candidate machines are compared (ADR-0006). Where the weights come from: [`docs/models.md`](docs/models.md).
 
 The original C++/OpenCV "annotator" tools (a 2015 prototype of face *detection*) were deleted on 2026-08-17 per [ADR-0001](docs/adr/0001-retire-opencv-annotators-for-learned-embeddings.md). They remain in git history — `git log -- annotators/` — and are not a reference implementation. Do not resurrect them.
 
@@ -60,7 +60,12 @@ Everything below is settled in the ADRs; this is a summary, not the source of tr
 
 ## Next actionable work
 
-Stage 1 in the implementation plan: the `afcapture -> afvision -> afstore -> afrender` wiring in `afbooth`. `afstore`'s schema and write path is done — `Corpus::ingest` takes an Embedding, the two crops and the original frame; `Corpus::window` is what the wall reads and `embeddings_for_model` is what the layout stage will read. `afrender::show` puts a `GridSpec`-sized Grid on screen from a list of `Portrait`s; ordering, Assignment and motion are Stage 2. The Stage 1 sanity check on what the Embedding is actually keyed on (ADR-0007) needs a camera and is still outstanding.
+The Stage 1 wiring is done: `afbooth::pipeline::Pipeline` is the whole `expose -> detect -> align -> embed -> ingest` path, and `afrender::show_live` answers a Shutter press by asking the caller for the Window again. Two things remain before Stage 2 (SOM ordering and LAPJV Assignment, ADR-0003):
+
+- **The ADR-0007 sanity check.** Capture the same person under two lightings and two people against one background, and confirm the Embedding is keyed on faces rather than on the room. It needs a camera and a human; nothing automated can stand in for it.
+- **Run the booth on every candidate machine** and compare the per-Capture timings before choosing hardware (ADR-0006).
+
+Also open: which face the booth should embed when several are in the frame. It currently declines the Capture and says so, deliberately, rather than settling that question by accident.
 
 ## `samples/`
 

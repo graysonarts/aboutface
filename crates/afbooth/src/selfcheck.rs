@@ -31,8 +31,29 @@ impl SelfCheck {
         println!("About:Face {}", env!("CARGO_PKG_VERSION"));
         println!("config: {}", config.source().display());
         println!("models dir: {}", config.models_dir().display());
+        println!("corpus dir: {}", config.corpus_dir().display());
         println!("execution provider: {provider}");
         println!("onnx runtime: {runtime}");
+        println!(
+            "grid: {}x{} = {} cells",
+            config.grid().cols(),
+            config.grid().rows(),
+            config.grid().cell_count()
+        );
+
+        let mut missing = Vec::new();
+        match afrender::adapter_report() {
+            Some(adapter) => println!("render backend: {adapter}"),
+            None => {
+                println!("render backend: NONE");
+                missing.push(
+                    "no GPU adapter this build can draw on — the wall cannot open".to_owned(),
+                );
+            }
+        }
+        // Which camera resolved is only knowable once it is opened, which the
+        // booth does next: this is the device it will ask for.
+        println!("camera requested: {}", config.camera());
         let crop = config.display_crop();
         println!(
             "display crop: {}x{} (margin {:.2}, bias {:.2})",
@@ -43,7 +64,6 @@ impl SelfCheck {
         );
         println!("models:");
 
-        let mut missing = Vec::new();
         for model in config.models() {
             println!("  {}", describe(model));
             if let Err(error) = model.ensure_present() {

@@ -29,3 +29,19 @@ margin = 0.35        # fraction of the detection box added on every side
 aspect_ratio = 0.8   # width over height; 1.0 square, 0.8 a 4:5 portrait
 width = 512          # rendered width in pixels
 vertical_bias = 0.06 # lifts the frame, because hair puts the face low in the box
+
+# Where the Corpus lives: `corpus.db` beside a tree of PNG files (ADR-0011).
+# Relative to this file's directory, and git-ignored — it is photographs of
+# people and never leaves the installation machine (ADR-0005).
+[corpus]
+dir = "corpus"
+
+# The wall's Grid, fixed for the run. Breathing between afcore::MIN_CELLS and
+# MAX_CELLS on the piece's own clock is Stage 3 (ADR-0004).
+[grid]
+cols = 5
+rows = 4
+
+# Which camera the Shutter opens. Omit `index` for the platform's first camera.
+[camera]
+# index = 0

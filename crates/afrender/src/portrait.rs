@@ -5,7 +5,7 @@
 //! the quad it lands on: a Visitor's face is not restretched to whatever shape
 //! the Grid happens to be.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use afcore::FaceId;
 use image::imageops::FilterType;
@@ -45,6 +45,11 @@ impl Portrait {
     /// Which Face this portrait shows.
     pub fn face(&self) -> FaceId {
         self.face
+    }
+
+    /// The display crop file this portrait draws from.
+    pub fn display_crop(&self) -> &Path {
+        &self.display_crop
     }
 
     /// Decodes it into one texture slot's worth of texels.

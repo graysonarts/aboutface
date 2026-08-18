@@ -12,6 +12,9 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 afcapture = { path = "crates/afcapture" }
+# Error propagation in the binary: the booth prints a failure's whole source
+# chain, because "camera failed" without "not found" is no use in a gallery.
+anyhow = "1"
 afcore = { path = "crates/afcore" }
 # Raw-mode key events, so the placeholder Shutter is a keypress and not a
 # keypress-plus-Enter. Example-only; nothing in the library depends on it.

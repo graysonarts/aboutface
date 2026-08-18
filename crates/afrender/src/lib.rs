@@ -38,9 +38,10 @@ mod portrait;
 mod residency;
 mod window;
 
-pub use app::{WallSpec, show};
+pub use app::{WallSpec, show, show_live};
 pub use error::RenderError;
 pub use geometry::{CellRect, Framing, Layout};
+pub use gpu::adapter_report;
 pub use portrait::{Portrait, SLOT_HEIGHT, SLOT_WIDTH};
 pub use residency::{Residency, Upload};
 pub use window::Window;

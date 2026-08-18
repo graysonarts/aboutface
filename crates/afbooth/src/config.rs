@@ -9,6 +9,8 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use afcapture::CameraSelector;
+use afcore::{GridSpec, GridSpecError};
 use afvision::{DisplayCropError, DisplayCropSpec, ModelError, ModelRole, ModelSpec};
 use serde::Deserialize;
 
@@ -56,6 +58,10 @@ pub enum ConfigError {
     /// The file parsed, but the display framing describes no rectangle.
     #[error(transparent)]
     DisplayCrop(#[from] DisplayCropError),
+
+    /// The file parsed, but the Grid it asks for is not one the piece shows.
+    #[error(transparent)]
+    Grid(#[from] GridSpecError),
 }
 
 /// One model entry in the configuration file.
@@ -137,6 +143,70 @@ fn default_vertical_bias() -> f32 {
     DisplayCropSpec::default().vertical_bias()
 }
 
+/// The `[corpus]` table: where the archive lives.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct CorpusTable {
+    /// Relative paths resolve against the configuration file's directory, so a
+    /// booth and its archive can be moved together.
+    #[serde(default = "default_corpus_dir")]
+    dir: PathBuf,
+}
+
+impl Default for CorpusTable {
+    fn default() -> Self {
+        Self {
+            dir: default_corpus_dir(),
+        }
+    }
+}
+
+fn default_corpus_dir() -> PathBuf {
+    PathBuf::from("corpus")
+}
+
+/// The `[grid]` table: how many Cells the wall shows.
+///
+/// Fixed for the run. The Grid breathing between [`afcore::MIN_CELLS`] and
+/// [`afcore::MAX_CELLS`] on the piece's own clock is Stage 3 (ADR-0004).
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct GridTable {
+    #[serde(default = "default_cols")]
+    cols: u32,
+    #[serde(default = "default_rows")]
+    rows: u32,
+}
+
+impl Default for GridTable {
+    fn default() -> Self {
+        Self {
+            cols: default_cols(),
+            rows: default_rows(),
+        }
+    }
+}
+
+// Twenty Cells: above `afcore::MIN_CELLS`, and small enough that a booth on an
+// unknown machine comes up without asking it for a thousand textures.
+fn default_cols() -> u32 {
+    5
+}
+
+fn default_rows() -> u32 {
+    4
+}
+
+/// The `[camera]` table: which device the Shutter opens.
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct CameraTable {
+    /// Device index as the platform enumerates them; omitted means the
+    /// platform's first camera.
+    #[serde(default)]
+    index: Option<u32>,
+}
+
 /// The configuration file as written on disk.
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -144,6 +214,12 @@ struct ConfigFile {
     models: ModelsTable,
     #[serde(default)]
     display: DisplayTable,
+    #[serde(default)]
+    corpus: CorpusTable,
+    #[serde(default)]
+    grid: GridTable,
+    #[serde(default)]
+    camera: CameraTable,
 }
 
 /// The booth's resolved configuration.
@@ -151,9 +227,12 @@ struct ConfigFile {
 pub struct BoothConfig {
     source: PathBuf,
     models_dir: PathBuf,
+    corpus_dir: PathBuf,
     detector: ModelSpec,
     embedder: ModelSpec,
     display_crop: DisplayCropSpec,
+    grid: GridSpec,
+    camera: CameraSelector,
 }
 
 impl BoothConfig {
@@ -206,10 +285,12 @@ impl BoothConfig {
             })?;
 
         let base = source.parent().unwrap_or(Path::new("."));
-        let models_dir = if file.models.dir.is_absolute() {
-            file.models.dir.clone()
-        } else {
-            base.join(&file.models.dir)
+        let models_dir = beside(base, &file.models.dir);
+        let corpus_dir = beside(base, &file.corpus.dir);
+        let grid = GridSpec::new(file.grid.cols, file.grid.rows)?;
+        let camera = match file.camera.index {
+            Some(index) => CameraSelector::Index(index),
+            None => CameraSelector::Default,
         };
 
         let detector = spec(ModelRole::Detector, &models_dir, &file.models.detector)?;
@@ -224,9 +305,12 @@ impl BoothConfig {
         Ok(Self {
             source: source.to_path_buf(),
             models_dir,
+            corpus_dir,
             detector,
             embedder,
             display_crop,
+            grid,
+            camera,
         })
     }
 
@@ -245,9 +329,44 @@ impl BoothConfig {
         &self.display_crop
     }
 
+    /// Where the Corpus lives.
+    pub fn corpus_dir(&self) -> &Path {
+        &self.corpus_dir
+    }
+
+    /// The Grid the wall shows.
+    pub fn grid(&self) -> GridSpec {
+        self.grid
+    }
+
+    /// Which camera the Shutter opens.
+    pub fn camera(&self) -> &CameraSelector {
+        &self.camera
+    }
+
     /// Every model the booth needs, in self-check order.
     pub fn models(&self) -> [&ModelSpec; 2] {
         [&self.detector, &self.embedder]
+    }
+
+    /// The detector, for building a Session.
+    pub fn detector(&self) -> &ModelSpec {
+        &self.detector
+    }
+
+    /// The embedder, for building a Session.
+    pub fn embedder(&self) -> &ModelSpec {
+        &self.embedder
+    }
+}
+
+/// Resolves a configured directory, which may be absolute, against the
+/// configuration file's own directory.
+fn beside(base: &Path, dir: &Path) -> PathBuf {
+    if dir.is_absolute() {
+        dir.to_path_buf()
+    } else {
+        base.join(dir)
     }
 }
 
@@ -486,6 +605,53 @@ mod tests {
         .expect_err("impossible framing");
 
         assert!(matches!(error, ConfigError::DisplayCrop(_)), "{error}");
+    }
+
+    #[test]
+    fn should_put_the_corpus_beside_the_config_when_it_names_no_directory() {
+        let config = parse(MINIMAL).expect("valid config");
+
+        assert_eq!(config.corpus_dir(), Path::new("/opt/af/corpus"));
+    }
+
+    #[test]
+    fn should_keep_an_absolute_corpus_directory_when_config_gives_one() {
+        let config =
+            parse(&format!("{MINIMAL}\n[corpus]\ndir = \"/srv/faces\"\n")).expect("valid config");
+
+        assert_eq!(config.corpus_dir(), Path::new("/srv/faces"));
+    }
+
+    #[test]
+    fn should_show_the_configured_grid_when_the_grid_table_is_present() {
+        let config =
+            parse(&format!("{MINIMAL}\n[grid]\ncols = 8\nrows = 5\n")).expect("valid config");
+
+        assert_eq!(config.grid().cell_count(), 40);
+    }
+
+    #[test]
+    fn should_reject_config_when_the_grid_is_outside_the_piece_s_range() {
+        // A Grid the piece will not show is a configuration error at startup,
+        // not a renderer failure after the window opens (ADR-0004).
+        let error = parse(&format!("{MINIMAL}\n[grid]\ncols = 1\nrows = 1\n"))
+            .expect_err("a grid below MIN_CELLS");
+
+        assert!(matches!(error, ConfigError::Grid(_)), "{error}");
+    }
+
+    #[test]
+    fn should_open_the_default_camera_when_config_names_no_index() {
+        let config = parse(MINIMAL).expect("valid config");
+
+        assert_eq!(config.camera(), &CameraSelector::Default);
+    }
+
+    #[test]
+    fn should_open_the_configured_camera_when_config_names_an_index() {
+        let config = parse(&format!("{MINIMAL}\n[camera]\nindex = 2\n")).expect("valid config");
+
+        assert_eq!(config.camera(), &CameraSelector::Index(2));
     }
 
     #[test]

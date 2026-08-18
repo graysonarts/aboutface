@@ -214,11 +214,6 @@ impl WallGpu {
             mapped_at_creation: false,
         });
 
-        let sources: HashMap<FaceId, &Portrait> = portraits
-            .iter()
-            .map(|portrait| (portrait.face(), portrait))
-            .collect();
-
         let mut wall = Self {
             surface,
             os_window: window,
@@ -233,19 +228,41 @@ impl WallGpu {
             background,
             framing,
             layout: Layout::new(spec, size.width, size.height, framing),
-            window: Window::onto(spec, portraits.iter().map(Portrait::face)),
+            window: Window::onto(spec, std::iter::empty()),
             residency: Residency::with_capacity(cells),
         };
 
-        let resident: Vec<FaceId> = wall.window.resident().collect();
-        for upload in wall.residency.sync(resident) {
-            // INVARIANT: the Window was built from these portraits, so every
-            // resident Face has one.
-            wall.upload(upload.slot, sources[&upload.face])?;
-        }
-        wall.rebuild_instances();
+        wall.set_portraits(portraits)?;
 
         Ok(wall)
+    }
+
+    /// Shows a different set of portraits in the same Grid.
+    ///
+    /// A Face that was already on the wall keeps its slot and is not decoded
+    /// again, so a Capture costs one upload rather than a Grid's worth — which
+    /// is the same property Drift will rely on (ADR-0004).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a display crop cannot be decoded.
+    pub(crate) fn set_portraits(&mut self, portraits: &[Portrait]) -> Result<(), RenderError> {
+        let sources: HashMap<FaceId, &Portrait> = portraits
+            .iter()
+            .map(|portrait| (portrait.face(), portrait))
+            .collect();
+
+        self.window = Window::onto(self.layout.spec(), portraits.iter().map(Portrait::face));
+
+        let resident: Vec<FaceId> = self.window.resident().collect();
+        for upload in self.residency.sync(resident) {
+            // INVARIANT: the Window was built from these portraits, so every
+            // resident Face has one.
+            self.upload(upload.slot, sources[&upload.face])?;
+        }
+        self.rebuild_instances();
+
+        Ok(())
     }
 
     /// Asks the windowing system for a frame.
@@ -399,4 +416,30 @@ impl WallGpu {
                 .write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));
         }
     }
+}
+
+/// The GPU adapter the wall would draw on, and the backend it would use.
+///
+/// The startup self-check reports it, because ADR-0006 leaves the hardware
+/// open and "which backend did I actually get" is a thing the operator must be
+/// able to compare between candidate machines. `None` means this build found no
+/// adapter at all and [`show`](crate::show) would fail.
+/// Asked for the same way the wall asks, minus the surface — there is
+/// no window yet at self-check time — so the answer is the adapter the wall
+/// will get unless the surface itself is the thing that fails.
+pub fn adapter_report() -> Option<String> {
+    let instance = wgpu::Instance::default();
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::default(),
+        force_fallback_adapter: false,
+        compatible_surface: None,
+        ..Default::default()
+    }))
+    .ok()?;
+
+    let info = adapter.get_info();
+    Some(format!(
+        "{} ({:?}, {:?})",
+        info.name, info.backend, info.device_type
+    ))
 }

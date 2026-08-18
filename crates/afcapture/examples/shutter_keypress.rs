@@ -63,7 +63,13 @@ fn run(mut shutter: Shutter<Box<dyn Camera>>) -> Result<(), String> {
         .map_err(|error| describe("could not open the camera", &error))?;
 
     println!("camera: {}", shutter.camera().describe());
-    println!("captures: {}", shutter.directory().display());
+    println!(
+        "captures: {}",
+        shutter
+            .directory()
+            .expect("this example presses, so it names a directory")
+            .display()
+    );
     println!("space or enter — capture     q or esc — quit");
 
     let outcome = loop_until_quit(&mut shutter);
